@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Kapit 0.1 — Hourly Analysis Program (HVAC Load, Sizing, Plant & Energy Modeling)</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <!-- Top Application Title & Menu Bar (frmMain) -->
+  <header class="app-header">
+    <div class="title-bar">
+      <div class="title-brand">
+        <span class="brand-badge">KAPIT 0.1</span>
+        <span class="title-text" id="window-title">Kapit 0.1 - [HAP-6.4-Example-Problem]</span>
+      </div>
+      <div class="title-meta">
+        <span class="engine-pill">ASHRAE Standard 183 / Heat Balance</span>
+        <span class="engine-pill">ASHRAE 62.1-2022 &amp; 90.1-2022</span>
+      </div>
+    </div>
+
+    <!-- Menu Bar -->
+    <nav class="menu-bar">
+      <div class="menu-item">
+        <span>Project</span>
+        <div class="menu-dropdown">
+          <button onclick="app.resetProject()">New / Reset Example Problem (Ctrl+N)</button>
+          <button onclick="app.openFilePicker('.hap,.json')">Open Project (.hap / .kapit)...</button>
+          <button onclick="app.loadInstalledExampleHap()">Load Installed HAP-6.4-Example-Problem.hap</button>
+          <hr />
+          <button onclick="app.downloadProjectJson()">Save Project (.kapit JSON)</button>
+          <button onclick="window.location.href='/api/export/hap'">Export Carrier HAP 6.4 Archive (.hap)</button>
+          <hr />
+          <button onclick="app.openGbxmlImportModal()">Import gbXML BIM Geometry...</button>
+          <button onclick="window.location.href='/api/export/gbxml'">Export gbXML BIM Geometry (.xml)</button>
+          <hr />
+          <button onclick="app.openPreferencesModal()">Preferences (Units, Standards, LEED)...</button>
+        </div>
+      </div>
+
+      <div class="menu-item">
+        <span>Edit</span>
+        <div class="menu-dropdown">
+          <button onclick="app.createNewEntityInCurrentCategory()">Create New Item... (Ins)</button>
+          <button onclick="app.duplicateSelectedEntity()">Duplicate Selected Item (Ctrl+D)</button>
+          <button onclick="app.deleteSelectedEntity()">Delete Selected Item (Del)</button>
+          <hr />
+          <button onclick="app.editSelectedEntity()">Properties... (Enter)</button>
+          <button onclick="app.duplicateAsBaseline()">Duplicate Alternative as Baseline [B000] (ASHRAE 90.1)</button>
+        </div>
+      </div>
+
+      <div class="menu-item">
+        <span>View</span>
+        <div class="menu-dropdown">
+          <button onclick="app.switchWorkspaceTab('explorer')">Project Explorer &amp; Editors</button>
+          <button onclick="app.switchWorkspaceTab('cad3d')">2D Floor Plan &amp; 3D Building Viewer</button>
+          <button onclick="app.switchWorkspaceTab('psych')">Interactive Psychrometric Chart</button>
+          <button onclick="app.switchWorkspaceTab('reports')">Design Load &amp; Energy Reports Viewer</button>
+        </div>
+      </div>
+
+      <div class="menu-item">
+        <span>Reports</span>
+        <div class="menu-dropdown">
+          <button onclick="app.openReport('sizing_summary')">Air System Sizing Summary</button>
+          <button onclick="app.openReport('zone_sizing')">Zone Sizing Summary</button>
+          <button onclick="app.openReport('ventilation')">Ventilation Sizing Summary (ASHRAE 62.1)</button>
+          <button onclick="app.openReport('heat_balance')">Air System &amp; Zone Heat Balance Summary</button>
+          <button onclick="app.openReport('psychrometrics')">System Psychrometrics &amp; Chart</button>
+          <hr />
+          <button onclick="app.openReport('annual_costs')">Annual Component Costs (Pie Chart &amp; Table)</button>
+          <button onclick="app.openReport('monthly_energy')">Monthly Energy Use by Component</button>
+          <button onclick="app.openReport('billing_details')">Billing Details - Electric</button>
+          <button onclick="app.openReport('monthly_sim')">Monthly Simulation Results</button>
+          <button onclick="app.openReport('leed_summary')">ASHRAE 90.1 Appendix G / LEED v4 Summary</button>
+          <button onclick="app.openReport('input_data')">Input Data Reports (All Categories)</button>
+          <hr />
+          <button onclick="window.location.href='/api/export/xlsx'">Export Workbook to Excel (.xlsx)</button>
+          <button onclick="window.location.href='/api/export/csv?type=monthly_simulation'">Export Monthly Simulation (.csv)</button>
+          <button onclick="window.location.href='/api/export/csv?type=zone_sizing'">Export Zone Sizing (.csv)</button>
+        </div>
+      </div>
+
+      <div class="menu-item">
+        <span>Wizards</span>
+        <div class="menu-dropdown">
+          <button onclick="app.openWizard('weather')">Weather Wizard (Global Station Search)...</button>
+          <button onclick="app.openWizard('building')">Building Footprint &amp; Space Wizard...</button>
+          <button onclick="app.openWizard('equipment')">HVAC Equipment &amp; Plant Wizard...</button>
+          <button onclick="app.openWizard('tariff')">Utility Rate Wizard (EIA / Brasil)...</button>
+        </div>
+      </div>
+
+      <div class="menu-item">
+        <span>Documentation</span>
+        <div class="menu-dropdown">
+          <button onclick="app.openReport('std183_doc')">Compliance with ANSI/ASHRAE/ACCA Standard 183</button>
+          <button onclick="app.openReport('leed_summary')">ASHRAE 90.1 Appendix G &amp; LEED v4 GHG Guide</button>
+        </div>
+      </div>
+    </nav>
+
+    <!-- Toolbar -->
+    <div class="toolbar">
+      <button class="tool-btn" onclick="app.openFilePicker('.hap,.json')" title="Open .hap or .kapit project">
+        <span>📂 Open .hap</span>
+      </button>
+      <button class="tool-btn" onclick="window.location.href='/api/export/hap'" title="Save as Carrier HAP 6.4 .hap file">
+        <span>💾 Save .hap</span>
+      </button>
+      <span class="toolbar-sep"></span>
+      <button class="tool-btn primary" onclick="app.runCalculations()" title="Run 3-Step Heat Balance, Sizing & 8760-hr Energy Simulation">
+        <span>⚡ Calculate Design &amp; Energy</span>
+      </button>
+      <button class="tool-btn" onclick="app.switchWorkspaceTab('reports')" title="Open Report Viewer">
+        <span>📊 Reports Viewer</span>
+      </button>
+      <button class="tool-btn" onclick="app.switchWorkspaceTab('cad3d')" title="2D Floor Plan & 3D Extruded Building Model">
+        <span>🏢 2D / 3D Building</span>
+      </button>
+      <button class="tool-btn" onclick="app.switchWorkspaceTab('psych')" title="Interactive Psychrometric Chart">
+        <span>📈 Psychrometrics</span>
+      </button>
+      <span class="toolbar-sep"></span>
+      <button class="tool-btn" onclick="app.openWizard('weather')"><span>🌍 Weather Wizard</span></button>
+      <button class="tool-btn" onclick="app.openWizard('building')"><span>📐 Building Wizard</span></button>
+      <button class="tool-btn" onclick="app.openWizard('equipment')"><span>❄️ Equipment Wizard</span></button>
+      <span class="toolbar-sep"></span>
+      <button class="tool-btn unit-toggle" id="btn-unit-toggle" onclick="app.toggleUnitsSystem()">
+        <span>Units: IP (English)</span>
+      </button>
+      <div class="inline-calc-box" title="UnitControls20 modCalc Inline Calculator (+, -, *, /, ^ or 3' 6&quot;)">
+        <input type="text" id="inline-calc-input" placeholder="Calc: e.g. 3' 6&quot; or 120*0.85" onkeydown="if(event.key==='Enter') app.evalInlineCalc()" />
+        <button onclick="app.evalInlineCalc()">=</button>
+        <span id="inline-calc-result"></span>
+      </div>
+    </div>
+  </header>
+
+  <input type="file" id="hidden-file-input" style="display:none" onchange="app.handleFileUpload(event)" />
+
+  <!-- Main Split Workspace (Left Project Tree + Right Workspace) -->
+  <main class="main-workspace">
+    <!-- Left Pane: HAP 6.4 Project TreeView -->
+    <aside class="tree-pane">
+      <div class="pane-header">Project Navigation Tree</div>
+      <div class="tree-container" id="project-tree"></div>
+
+      <!-- Quick KPI Summary Card at bottom of Left Pane -->
+      <div class="kpi-summary-card" id="sidebar-kpi-card">
+        <div class="kpi-title">Live System Summary</div>
+        <div class="kpi-row"><span>Peak Cooling:</span> <strong id="kpi-tons">28.9 Tons (346.5 MBH)</strong></div>
+        <div class="kpi-row"><span>Supply Design:</span> <strong id="kpi-cfm">6,336 CFM</strong></div>
+        <div class="kpi-row"><span>Outdoor Air (62.1):</span> <strong id="kpi-oa">3,878 CFM</strong></div>
+        <div class="kpi-row"><span>Preheat / Reheat:</span> <strong id="kpi-heat">198.1 / 128.7 MBH</strong></div>
+        <div class="kpi-row"><span>Annual Energy:</span> <strong id="kpi-kwh">145,595 kWh/yr</strong></div>
+        <div class="kpi-row"><span>Annual Cost:</span> <strong id="kpi-cost">$18,112 / yr</strong></div>
+      </div>
+    </aside>
+
+    <!-- Right Pane: Tabbed Workspace (Explorer/Editors | 2D/3D Building | Psychrometrics | Report Viewer) -->
+    <section class="content-pane">
+      <div class="workspace-tabs">
+        <button class="ws-tab active" data-tab="explorer" onclick="app.switchWorkspaceTab('explorer')">
+          📋 Category List &amp; Property Editor
+        </button>
+        <button class="ws-tab" data-tab="cad3d" onclick="app.switchWorkspaceTab('cad3d')">
+          🏢 2D Floor Plan &amp; 3D Extruded Model
+        </button>
+        <button class="ws-tab" data-tab="psych" onclick="app.switchWorkspaceTab('psych')">
+          🌡️ System Psychrometric Chart &amp; Calculator
+        </button>
+        <button class="ws-tab" data-tab="reports" onclick="app.switchWorkspaceTab('reports')">
+          📄 Design Load &amp; Energy Reports (HAP 6.4 Format)
+        </button>
+      </div>
+
+      <!-- TAB 1: Category List View + Detailed Multi-Tab Property Editor -->
+      <div class="ws-panel active" id="panel-explorer">
+        <div class="entity-list-section">
+          <div class="section-bar">
+            <span id="current-category-title">Weather Properties</span>
+            <div class="section-actions">
+              <button class="btn-sm" onclick="app.createNewEntityInCurrentCategory()">+ Create New (Ins)</button>
+              <button class="btn-sm" onclick="app.duplicateSelectedEntity()">📋 Duplicate (Ctrl+D)</button>
+              <button class="btn-sm danger" onclick="app.deleteSelectedEntity()">🗑️ Delete (Del)</button>
+              <button class="btn-sm primary" onclick="app.saveAndCalculate()">Apply &amp; Recalculate</button>
+            </div>
+          </div>
+          <div class="entity-table-wrap" id="entity-list-container"></div>
+        </div>
+
+        <div class="entity-editor-section" id="entity-editor-container"></div>
+      </div>
+
+      <!-- TAB 2: 2D Floor Plan Sketcher & 3D Extruded Building Model -->
+      <div class="ws-panel" id="panel-cad3d">
+        <div class="cad-toolbar">
+          <div class="cad-tools-row">
+            <label>Level:
+              <select id="cad-level-select" onchange="modeler.activeLevel=this.value; modeler.render()">
+                <option value="Level 1">Level 1 (0 ft)</option>
+                <option value="Level 2">Level 2 (12 ft)</option>
+              </select>
+            </label>
+            <span class="toolbar-sep"></span>
+            <button class="btn-sm" id="btn-cad-select" onclick="modeler.currentTool='select'; modeler.render()">👆 Select / Move</button>
+            <button class="btn-sm" id="btn-cad-rect" onclick="modeler.currentTool='draw_rect'">📐 Draw Room (Drag)</button>
+            <button class="btn-sm" onclick="modeler.splitSelectedPerimeterCore(15)">✂️ Split Perim/Core (15 ft)</button>
+            <button class="btn-sm" onclick="modeler.addWindowToSelectedWall()">🪟 + Window</button>
+            <button class="btn-sm" onclick="modeler.addDoorToSelectedWall()">🚪 + Door</button>
+            <button class="btn-sm danger" onclick="modeler.deleteSelectedRoom()">🗑️ Delete Room</button>
+          </div>
+          <div class="cad-controls">
+            <label>View Mode:
+              <select id="cad-view-mode" onchange="modeler.viewMode=this.value; modeler.render()">
+                <option value="split">Split 2D Floor Plan + 3D Extruded</option>
+                <option value="2d">2D Architectural Floor Plan</option>
+                <option value="3d">3D Isometric Extruded Model</option>
+              </select>
+            </label>
+            <label>Color By:
+              <select id="cad-color-mode" onchange="modeler.colorMode=this.value; modeler.render()">
+                <option value="zone">HVAC Thermal Zone</option>
+                <option value="load">Peak Cooling Intensity (BTU/hr·sqft)</option>
+                <option value="usage">ASHRAE 62.1 Space Usage</option>
+              </select>
+            </label>
+            <button class="btn-sm" onclick="modeler.rot3d.az=(modeler.rot3d.az+45)%360; modeler.render()">🔄 Rotate 3D</button>
+          </div>
+        </div>
+        <div class="cad-selection-bar" id="cad-selection-info">
+          Click a room to select or drag to move. Use 'Draw Room' to sketch new spaces.
+        </div>
+        <div class="cad-canvas-wrapper">
+          <canvas id="building-canvas" width="1120" height="500"></canvas>
+        </div>
+        <div class="cad-wall-inspector" id="cad-wall-inspector"></div>
+      </div>
+
+      <!-- TAB 3: Interactive Psychrometric Chart & State Point Analyzer -->
+      <div class="ws-panel" id="panel-psych">
+        <div class="psych-layout">
+          <div class="psych-chart-box">
+            <div class="section-bar">
+              <span>ASHRAE Sea-Level / Altitude-Corrected Psychrometric Chart — VAV - Wing D Peak Cooling (August 16:00)</span>
+              <span id="psych-elev-badge">Elevation: 790.0 ft (14.281 psia)</span>
+            </div>
+            <canvas id="psych-canvas" width="780" height="490"></canvas>
+          </div>
+          <div class="psych-side-box">
+            <div class="section-bar"><span>Interactive State Point Calculator</span></div>
+            <div class="form-grid compact">
+              <label>Airflow (CFM): <input type="number" id="ps-cfm" value="6107" /></label>
+              <label>Dry-Bulb (°F): <input type="number" id="ps-db" value="85.3" step="0.1" /></label>
+              <label>Wet-Bulb (°F): <input type="number" id="ps-wb" value="71.2" step="0.1" /></label>
+              <button class="btn-sm primary" onclick="app.calcCustomPsychPoint()">Compute Psychrometric State</button>
+            </div>
+            <div id="custom-psych-output" class="psych-card"></div>
+
+            <div class="section-bar" style="margin-top:10px"><span>System Cycle State Points (Aug 16:00)</span></div>
+            <div id="system-psych-table-wrap"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- TAB 4: HAP 6.4 Report Viewer (frmReportViewer) -->
+      <div class="ws-panel" id="panel-reports">
+        <div class="report-toolbar">
+          <div class="report-selector-group">
+            <label>Select Report:
+              <select id="report-type-select" onchange="reportsUI.renderSelectedReport()">
+                <optgroup label="Design Load Reports (ASHRAE Std 183)">
+                  <option value="sizing_summary">1. Air System Sizing Summary (VAV - Wing D)</option>
+                  <option value="zone_sizing">2. Zone Sizing Summary (Terminals, Peak Loads, Spaces)</option>
+                  <option value="ventilation">3. Ventilation Sizing Summary (ASHRAE Standard 62.1-2022)</option>
+                  <option value="heat_balance">4. Air System &amp; Zone Heat Balance Summary</option>
+                  <option value="psychrometrics">5. System Psychrometrics Analysis</option>
+                </optgroup>
+                <optgroup label="Energy Modeling Reports (8,760 Hours)">
+                  <option value="annual_costs">6. Annual Component Costs (Pie Chart &amp; Table)</option>
+                  <option value="monthly_energy">7. Monthly Energy Use by System Component</option>
+                  <option value="billing_details">8. Billing Details - Electric (6 Tables)</option>
+                  <option value="monthly_sim">9. Monthly Simulation Results (Loads &amp; Inputs)</option>
+                  <option value="leed_summary">10. ASHRAE 90.1 Appendix G / LEED v4 Summary (4 Rotations &amp; GHG)</option>
+                </optgroup>
+                <optgroup label="Plant &amp; Input Data Reports">
+                  <option value="plant_report">11. Chiller, Merkel Tower &amp; Condensing Boiler Plant Report</option>
+                  <option value="input_data">12. Complete Project Input Data Reports (Weather, Building, Spaces, Assemblies)</option>
+                  <option value="std183_doc">13. ANSI/ASHRAE/ACCA Standard 183-2024 Compliance Matrix</option>
+                </optgroup>
+              </select>
+            </label>
+          </div>
+          <div class="report-actions">
+            <button class="btn-sm" onclick="window.print()">🖨️ Print / Save PDF</button>
+            <button class="btn-sm" onclick="window.location.href='/api/export/xlsx'">📗 Export Excel (.xlsx)</button>
+            <button class="btn-sm" onclick="window.location.href='/api/export/csv?type=monthly_simulation'">📄 Export CSV (.csv)</button>
+          </div>
+        </div>
+
+        <div class="report-pages-container" id="report-viewer-content"></div>
+      </div>
+    </section>
+  </main>
+
+  <!-- Status Bar (frmMain 4-Panel Status Bar) -->
+  <footer class="status-bar">
+    <div class="status-panel" id="status-vent">Ventilation Standard: ASHRAE Standard 62.1-2022</div>
+    <div class="status-panel" id="status-energy">Energy Standard: ASHRAE Standard 90.1-2022</div>
+    <div class="status-panel" id="status-units">Units: English (IP)</div>
+    <div class="status-panel" id="status-msg">Ready — Project Calculated (0 Validation Errors)</div>
+  </footer>
+
+  <!-- Modal Container for Wizards & Preferences -->
+  <div class="modal-backdrop" id="modal-backdrop" style="display:none">
+    <div class="modal-window" id="modal-window">
+      <div class="modal-header">
+        <span id="modal-title">Wizard</span>
+        <button class="modal-close" onclick="app.closeModal()">✕</button>
+      </div>
+      <div class="modal-body" id="modal-body"></div>
+      <div class="modal-footer" id="modal-footer"></div>
+    </div>
+  </div>
+
+  <script src="templates.js"></script>
+  <script src="modeler.js"></script>
+  <script src="reports_ui.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
