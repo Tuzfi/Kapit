@@ -61,14 +61,44 @@ const reportsUI = {
     }
 
     container.innerHTML = html;
-    if (rptType === "annual_costs") {
+    if (rptType === "annual_costs" && calc.billing_and_costs && calc.billing_and_costs.annual_component_costs) {
       setTimeout(() => this.drawCostPieChart(calc.billing_and_costs.annual_component_costs), 30);
     }
   },
 
+  buildArchivedModuleNotice(moduleName, sourceFile, proj, nowStr) {
+    const isPT = typeof I18N !== "undefined" && I18N.getLanguage() === "pt-BR";
+    return `
+      <div class="hap-report-page">
+        ${this.headerBox(moduleName, isPT ? "(Módulo Arquivado na Pasta obsoleto/)" : "(Module Archived in obsoleto/)", proj, nowStr)}
+        <div style="background:#f8fafc; border:2px dashed #94a3b8; border-radius:8px; padding:24px; margin:30px 20px; font-family:'Segoe UI',sans-serif;">
+          <h3 style="color:#1e293b; margin-top:0;">📦 ${isPT ? "Módulo Desacoplado do Núcleo Térmico de Pico" : "Module Decoupled from Peak Thermal Core"}</h3>
+          <p style="color:#475569; font-size:13px; line-height:1.6;">
+            ${isPT
+              ? `O módulo <strong>${moduleName}</strong> foi movido para <code>${sourceFile}</code> em conformidade com o cálculo de carga térmica estrita segundo a norma ANSI/ASHRAE/ACCA 183.`
+              : `The <strong>${moduleName}</strong> module was safely moved to <code>${sourceFile}</code> in compliance with ANSI/ASHRAE/ACCA 183 peak load sizing.`}
+          </p>
+          <div style="background:#eff6ff; border-left:4px solid #0284c7; padding:12px 16px; margin:16px 0; font-size:12px; color:#1e3a8a;">
+            <strong>${isPT ? "Como Reativar ou Consultar Código:" : "How to Restore or Inspect Code:"}</strong><br/>
+            ${isPT
+              ? `Abra o arquivo <code>DOCUMENTACAO_MODULOS_OBSOLETOS_RECUPERACAO.pdf</code> na raiz do projeto ou leia o guia em <code>obsoleto/README.md</code>.`
+              : `See <code>DOCUMENTACAO_MODULOS_OBSOLETOS_RECUPERACAO.pdf</code> in the project root or read <code>obsoleto/README.md</code>.`}
+          </div>
+          <p style="font-size:11.5px; color:#64748b; margin-bottom:0;">
+            ${isPT
+              ? "O Kapit 0.1 está operando em <strong>Modo Núcleo Térmico Limpo</strong>: dimensionamento instantâneo de vazão CFM/L·s, serpentinas e balanço de calor."
+              : "Kapit 0.1 is running in <strong>Clean Thermal Core Mode</strong>: instant peak cooling/heating sizing, CFM airflow, and psychrometric coil states."}
+          </p>
+        </div>
+        ${this.footerBox(1, 1)}
+      </div>
+    `;
+  },
+
   headerBox(title, subtitle, proj, nowStr) {
     const pName = (proj.project_info && proj.project_info.name) || "HAP-6.4-Example-Problem";
-    const prepBy = (proj.project_info && proj.project_info.prepared_by) || "Carrier / Kapit";
+    const isPT = typeof I18N !== "undefined" && I18N.getLanguage() === "pt-BR";
+    const prepBy = (proj.project_info && proj.project_info.prepared_by) || (isPT ? "Carrier / Kapit Brasil" : "Carrier / Kapit");
     return `
       <div class="hap-rpt-header-box">
         <div class="hap-rpt-title">${title}</div>
@@ -82,10 +112,11 @@ const reportsUI = {
   },
 
   footerBox(pageNum, totalPages) {
+    const isPT = typeof I18N !== "undefined" && I18N.getLanguage() === "pt-BR";
     return `
       <div class="hap-rpt-footer">
         <span>Kapit / Hourly Analysis Program 6.4</span>
-        <span>Page ${pageNum} of ${totalPages}</span>
+        <span>${isPT ? "Página" : "Page"} ${pageNum} ${isPT ? "de" : "of"} ${totalPages}</span>
       </div>
     `;
   },
@@ -97,102 +128,109 @@ const reportsUI = {
     const sf = s.supply_fan;
     const ov = s.outdoor_ventilation;
     const altName = (proj.alternatives && proj.alternatives[0] && proj.alternatives[0].name) || "ALT1 - VAV RTU";
+    const isSI = typeof I18N !== "undefined" && I18N.isSI();
+    const isPT = typeof I18N !== "undefined" && I18N.getLanguage() === "pt-BR";
+
+    const titleStr = isPT ? `Resumo de Dimensionamento do Sistema de Ar para ${s.system_name}` : `Air System Sizing Summary for ${s.system_name}`;
+    const altStr = isPT ? `(Na Alternativa: ${altName})` : `(In Alternative: ${altName})`;
+
+    const areaFmt = isSI ? `${(s.floor_area_sqft * 0.0929).toFixed(1)} m²` : `${s.floor_area_sqft.toFixed(1)} sqft`;
+    const ccTonFmt = isSI ? `${(cc.total_coil_tons * 3.517).toFixed(1)} kW (${cc.total_coil_tons.toFixed(1)} TR)` : `${cc.total_coil_tons.toFixed(1)} Tons`;
+    const ccMbhFmt = isSI ? `${(cc.total_coil_mbh * 0.2931).toFixed(1)} kW` : `${cc.total_coil_mbh.toFixed(1)} MBH`;
+    const ccSensFmt = isSI ? `${(cc.sensible_coil_mbh * 0.2931).toFixed(1)} kW` : `${cc.sensible_coil_mbh.toFixed(1)} MBH`;
+    const ccFlowFmt = isSI ? `${(cc.coil_cfm_at_peak * 0.4719).toFixed(0)} L/s` : `${cc.coil_cfm_at_peak} CFM`;
+    const ccSumFlowFmt = isSI ? `${(cc.sum_peak_zone_cfm * 0.4719).toFixed(0)} L/s` : `${cc.sum_peak_zone_cfm} CFM`;
+    const ccSupTempFmt = isSI ? `${((cc.design_supply_temp_f - 32) * 5/9).toFixed(1)} °C` : `${cc.design_supply_temp_f.toFixed(1)} F`;
+    const phLoadFmt = isSI ? `${(ph.max_coil_load_mbh * 0.2931).toFixed(1)} kW` : `${ph.max_coil_load_mbh.toFixed(1)} MBH`;
+    const phFlowFmt = isSI ? `${(ph.coil_cfm_heating * 0.4719).toFixed(0)} L/s` : `${ph.coil_cfm_heating} CFM`;
+    const sfFlowFmt = isSI ? `${(sf.design_cfm * 0.4719).toFixed(0)} L/s` : `${sf.design_cfm} CFM`;
+    const sfSumFlowFmt = isSI ? `${(sf.sum_peak_zone_cfm * 0.4719).toFixed(0)} L/s` : `${sf.sum_peak_zone_cfm} CFM`;
+    const sfStaticFmt = isSI ? `${(sf.fan_total_static_in_wg * 248.84).toFixed(0)} Pa` : `${sf.fan_total_static_in_wg.toFixed(2)} in wg`;
+    const ovFlowFmt = isSI ? `${(ov.design_airflow_cfm * 0.4719).toFixed(0)} L/s` : `${ov.design_airflow_cfm} CFM`;
 
     return `
       <div class="hap-report-page">
-        ${this.headerBox(`Air System Sizing Summary for ${s.system_name}`, `(In Alternative: ${altName})`, proj, nowStr)}
+        ${this.headerBox(titleStr, altStr, proj, nowStr)}
 
-        <div class="hap-sec-heading">Air System Information</div>
+        <div class="hap-sec-heading">${isPT ? "Informações do Sistema de Ar" : "Air System Information"}</div>
         <div class="hap-2col-leader">
           <div>
-            <div class="leader-line"><span>Air System Name</span><strong>${s.system_name}</strong></div>
-            <div class="leader-line"><span>Equipment Class</span><strong>${s.equipment_class}</strong></div>
-            <div class="leader-line"><span>Air System Type</span><strong>${s.system_type}</strong></div>
+            <div class="leader-line"><span>${isPT ? "Nome do Sistema de Ar" : "Air System Name"}</span><strong>${s.system_name}</strong></div>
+            <div class="leader-line"><span>${isPT ? "Classe do Equipamento" : "Equipment Class"}</span><strong>${s.equipment_class}</strong></div>
+            <div class="leader-line"><span>${isPT ? "Tipo do Sistema de Ar" : "Air System Type"}</span><strong>${s.system_type}</strong></div>
           </div>
           <div>
-            <div class="leader-line"><span>Number of zones</span><strong>${s.number_of_zones}</strong></div>
-            <div class="leader-line"><span>Floor Area</span><strong>${s.floor_area_sqft.toFixed(1)} sqft</strong></div>
-            <div class="leader-line"><span>Location</span><strong>${s.location}</strong></div>
+            <div class="leader-line"><span>${isPT ? "Número de Zonas" : "Number of zones"}</span><strong>${s.number_of_zones}</strong></div>
+            <div class="leader-line"><span>${isPT ? "Área de Piso" : "Floor Area"}</span><strong>${areaFmt}</strong></div>
+            <div class="leader-line"><span>${isPT ? "Localidade" : "Location"}</span><strong>${s.location}</strong></div>
           </div>
         </div>
 
-        <div class="hap-sec-heading">Sizing Calculation Information</div>
+        <div class="hap-sec-heading">${isPT ? "Informações do Cálculo de Dimensionamento" : "Sizing Calculation Information"}</div>
         <div class="hap-2col-leader">
           <div>
-            <div class="leader-line"><span>Calculation Months</span><strong>${s.calculation_months}</strong></div>
-            <div class="leader-line"><span>Sizing Data</span><strong>${s.sizing_data}</strong></div>
+            <div class="leader-line"><span>${isPT ? "Meses de Cálculo" : "Calculation Months"}</span><strong>${s.calculation_months}</strong></div>
+            <div class="leader-line"><span>${isPT ? "Critério de Dimensionamento" : "Sizing Data"}</span><strong>${s.sizing_data}</strong></div>
           </div>
           <div>
-            <div class="leader-line"><span>Zone CFM Sizing</span><strong>${s.zone_cfm_sizing}</strong></div>
-            <div class="leader-line"><span>Space CFM Sizing</span><strong>${s.space_cfm_sizing}</strong></div>
+            <div class="leader-line"><span>${isPT ? "Dimensionamento de Vazão da Zona" : "Zone CFM Sizing"}</span><strong>${s.zone_cfm_sizing}</strong></div>
+            <div class="leader-line"><span>${isPT ? "Dimensionamento de Vazão do Espaço" : "Space CFM Sizing"}</span><strong>${s.space_cfm_sizing}</strong></div>
           </div>
         </div>
 
-        <div class="hap-sec-heading">Central Cooling Coil Sizing Data</div>
+        <div class="hap-sec-heading">${isPT ? "Dados da Serpentina de Resfriamento Central" : "Central Cooling Coil Sizing Data"}</div>
         <div class="hap-2col-leader">
           <div>
-            <div class="leader-line"><span>Total coil load</span><strong>${cc.total_coil_tons.toFixed(1)} Tons</strong></div>
-            <div class="leader-line"><span>Total coil load</span><strong>${cc.total_coil_mbh.toFixed(1)} MBH</strong></div>
-            <div class="leader-line"><span>Sensible coil load</span><strong>${cc.sensible_coil_mbh.toFixed(1)} MBH</strong></div>
-            <div class="leader-line"><span>Coil CFM at peak load</span><strong>${cc.coil_cfm_at_peak} CFM</strong></div>
-            <div class="leader-line"><span>Sum of peak zone CFM</span><strong>${cc.sum_peak_zone_cfm} CFM</strong></div>
-            <div class="leader-line"><span>Sensible heat ratio</span><strong>${cc.sensible_heat_ratio.toFixed(3)}</strong></div>
-            <div class="leader-line"><span>CFM/Ton</span><strong>${cc.cfm_per_ton.toFixed(1)}</strong></div>
-            <div class="leader-line"><span>sqft/Ton</span><strong>${cc.sqft_per_ton.toFixed(1)}</strong></div>
-            <div class="leader-line"><span>BTU/(hr sqft)</span><strong>${cc.btuh_per_sqft.toFixed(1)}</strong></div>
-            <div class="leader-line"><span>Water flow @ 10.0 F rise</span><strong>${cc.water_flow_gpm}</strong></div>
+            <div class="leader-line"><span>${isPT ? "Carga total da serpentina" : "Total coil load"}</span><strong>${ccTonFmt}</strong></div>
+            <div class="leader-line"><span>${isPT ? "Carga total (térmica)" : "Total coil load"}</span><strong>${ccMbhFmt}</strong></div>
+            <div class="leader-line"><span>${isPT ? "Carga sensível" : "Sensible coil load"}</span><strong>${ccSensFmt}</strong></div>
+            <div class="leader-line"><span>${isPT ? "Vazão no pico da serpentina" : "Coil CFM at peak load"}</span><strong>${ccFlowFmt}</strong></div>
+            <div class="leader-line"><span>${isPT ? "Soma das vazões de pico das zonas" : "Sum of peak zone CFM"}</span><strong>${ccSumFlowFmt}</strong></div>
+            <div class="leader-line"><span>${isPT ? "Fator de calor sensível (SHR)" : "Sensible heat ratio"}</span><strong>${cc.sensible_heat_ratio.toFixed(3)}</strong></div>
+            <div class="leader-line"><span>${isPT ? "Intensidade térmica" : "BTU/(hr sqft)"}</span><strong>${isSI ? (cc.btuh_per_sqft * 3.1546).toFixed(1) + " W/m²" : cc.btuh_per_sqft.toFixed(1) + " BTU/(hr·sqft)"}</strong></div>
           </div>
           <div>
-            <div class="leader-line"><span>Peak coil load occurs at</span><strong>${cc.peak_load_time}</strong></div>
-            <div class="leader-line"><span>OA DB / WB</span><strong>${cc.oa_db_wb}</strong></div>
-            <div class="leader-line"><span>Entering DB / WB</span><strong>${cc.entering_db_wb}</strong></div>
-            <div class="leader-line"><span>Leaving DB / WB</span><strong>${cc.leaving_db_wb}</strong></div>
-            <div class="leader-line"><span>Resulting RH</span><strong>${cc.resulting_rh_pct} %</strong></div>
-            <div class="leader-line"><span>Design supply temp.</span><strong>${cc.design_supply_temp_f.toFixed(1)} F</strong></div>
-            <div class="leader-line"><span>Zone T-stat Check</span><strong>${cc.zone_tstat_check}</strong></div>
-            <div class="leader-line"><span>Max zone temperature deviation</span><strong>${cc.max_zone_temp_deviation_f.toFixed(1)} F</strong></div>
+            <div class="leader-line"><span>${isPT ? "Pico da serpentina ocorre em" : "Peak coil load occurs at"}</span><strong>${cc.peak_load_time}</strong></div>
+            <div class="leader-line"><span>${isPT ? "TBS / TBU Externa" : "OA DB / WB"}</span><strong>${cc.oa_db_wb}</strong></div>
+            <div class="leader-line"><span>${isPT ? "TBS / TBU Entrada" : "Entering DB / WB"}</span><strong>${cc.entering_db_wb}</strong></div>
+            <div class="leader-line"><span>${isPT ? "TBS / TBU Saída" : "Leaving DB / WB"}</span><strong>${cc.leaving_db_wb}</strong></div>
+            <div class="leader-line"><span>${isPT ? "UR Resultante" : "Resulting RH"}</span><strong>${cc.resulting_rh_pct} %</strong></div>
+            <div class="leader-line"><span>${isPT ? "Temp. insuflamento de projeto" : "Design supply temp."}</span><strong>${ccSupTempFmt}</strong></div>
           </div>
         </div>
 
-        <div class="hap-sec-heading">Preheat Coil Sizing Data</div>
+        <div class="hap-sec-heading">${isPT ? "Dados da Serpentina de Pré-aquecimento" : "Preheat Coil Sizing Data"}</div>
         <div class="hap-2col-leader">
           <div>
-            <div class="leader-line"><span>Max coil load</span><strong>${ph.max_coil_load_mbh.toFixed(1)} MBH</strong></div>
-            <div class="leader-line"><span>Coil CFM at Design Heating</span><strong>${ph.coil_cfm_heating} CFM</strong></div>
-            <div class="leader-line"><span>Max coil CFM</span><strong>${ph.max_coil_cfm} CFM</strong></div>
-            <div class="leader-line"><span>Water flow @ 20.0 F drop</span><strong>${ph.water_flow_gpm}</strong></div>
+            <div class="leader-line"><span>${isPT ? "Carga máxima da serpentina" : "Max coil load"}</span><strong>${phLoadFmt}</strong></div>
+            <div class="leader-line"><span>${isPT ? "Vazão em aquecimento de projeto" : "Coil CFM at Design Heating"}</span><strong>${phFlowFmt}</strong></div>
           </div>
           <div>
-            <div class="leader-line"><span>Load occurs at</span><strong>${ph.load_occurs_at}</strong></div>
-            <div class="leader-line"><span>Ent. DB / Lvg DB</span><strong>${ph.ent_lvg_db}</strong></div>
+            <div class="leader-line"><span>${isPT ? "Carga ocorre em" : "Load occurs at"}</span><strong>${ph.load_occurs_at}</strong></div>
+            <div class="leader-line"><span>${isPT ? "TBS Ent. / TBS Saída" : "Ent. DB / Lvg DB"}</span><strong>${ph.ent_lvg_db}</strong></div>
           </div>
         </div>
 
-        <div class="hap-sec-heading">Supply Fan Sizing Data</div>
+        <div class="hap-sec-heading">${isPT ? "Dados do Ventilador de Insuflamento" : "Supply Fan Sizing Data"}</div>
         <div class="hap-2col-leader">
           <div>
-            <div class="leader-line"><span>Design CFM</span><strong>${sf.design_cfm} CFM</strong></div>
-            <div class="leader-line"><span>Design CFM occurs at</span><strong>${sf.design_cfm_time}</strong></div>
-            <div class="leader-line"><span>Design CFM/sqft</span><strong>${sf.design_cfm_per_sqft.toFixed(2)} CFM/sqft</strong></div>
-            <div class="leader-line"><span>Sum of peak zone CFM</span><strong>${sf.sum_peak_zone_cfm} CFM</strong></div>
-            <div class="leader-line"><span>VAV Fan Diversity</span><strong>${sf.vav_fan_diversity_pct.toFixed(1)} %</strong></div>
+            <div class="leader-line"><span>${isPT ? "Vazão de Projeto" : "Design CFM"}</span><strong>${sfFlowFmt}</strong></div>
+            <div class="leader-line"><span>${isPT ? "Vazão de projeto ocorre em" : "Design CFM occurs at"}</span><strong>${sf.design_cfm_time}</strong></div>
+            <div class="leader-line"><span>${isPT ? "Soma das vazões de pico das zonas" : "Sum of peak zone CFM"}</span><strong>${sfSumFlowFmt}</strong></div>
+            <div class="leader-line"><span>${isPT ? "Diversidade do ventilador VAV" : "VAV Fan Diversity"}</span><strong>${sf.vav_fan_diversity_pct.toFixed(1)} %</strong></div>
           </div>
           <div>
-            <div class="leader-line"><span>Fan motor BHP</span><strong>${sf.fan_motor_bhp.toFixed(2)} BHP</strong></div>
-            <div class="leader-line"><span>Fan motor kW</span><strong>${sf.fan_motor_kw.toFixed(2)} kW</strong></div>
-            <div class="leader-line"><span>Fan total static</span><strong>${sf.fan_total_static_in_wg.toFixed(2)} in wg</strong></div>
+            <div class="leader-line"><span>${isPT ? "Potência do motor" : "Fan motor kW"}</span><strong>${sf.fan_motor_kw.toFixed(2)} kW (${sf.fan_motor_bhp.toFixed(2)} BHP)</strong></div>
+            <div class="leader-line"><span>${isPT ? "Pressão estática total" : "Fan total static"}</span><strong>${sfStaticFmt}</strong></div>
           </div>
         </div>
 
-        <div class="hap-sec-heading">Outdoor Ventilation Air Data</div>
+        <div class="hap-sec-heading">${isPT ? "Dados de Ventilação e Ar Externo" : "Outdoor Ventilation Air Data"}</div>
         <div class="hap-2col-leader">
           <div>
-            <div class="leader-line"><span>Design airflow CFM</span><strong>${ov.design_airflow_cfm} CFM</strong></div>
-            <div class="leader-line"><span>CFM/sqft</span><strong>${ov.cfm_per_sqft.toFixed(2)} CFM/sqft</strong></div>
+            <div class="leader-line"><span>${isPT ? "Vazão de ar externo de projeto" : "Design airflow CFM"}</span><strong>${ovFlowFmt}</strong></div>
           </div>
-          <div>
-            <div class="leader-line"><span>CFM/person</span><strong>${ov.cfm_per_person.toFixed(2)} CFM/person</strong></div>
-          </div>
+          <div></div>
         </div>
 
         ${this.footerBox(1, 1)}
@@ -204,43 +242,66 @@ const reportsUI = {
     const s = calc.air_system.sizing_summary;
     const zones = calc.air_system.zone_sizing;
     const altName = (proj.alternatives && proj.alternatives[0] && proj.alternatives[0].name) || "ALT1 - VAV RTU";
+    const isSI = typeof I18N !== "undefined" && I18N.isSI();
+    const isPT = typeof I18N !== "undefined" && I18N.getLanguage() === "pt-BR";
 
-    const termRows = zones.map(z => `
-      <tr>
-        <td>${z.zone_name}</td>
-        <td>${z.design_airflow_cfm}</td>
-        <td>${z.min_airflow_cfm}</td>
-        <td>${z.cfm_per_sqft.toFixed(2)}</td>
-        <td>${z.reheat_coil_mbh.toFixed(1)}</td>
-        <td>-</td>
-        <td>0.0</td>
-        <td>-</td>
-        <td>0</td>
-      </tr>
-    `).join("");
+    const titleStr = isPT ? `Resumo de Dimensionamento das Zonas para ${s.system_name}` : `Zone Sizing Summary for ${s.system_name}`;
+    const altStr = isPT ? `(Na Alternativa: ${altName})` : `(In Alternative: ${altName})`;
 
-    const peakRows = zones.map(z => `
-      <tr>
-        <td>${z.zone_name}</td>
-        <td>${z.cooling_sensible_mbh.toFixed(1)}</td>
-        <td>${z.time_of_peak}</td>
-        <td>${z.heating_load_mbh.toFixed(1)}</td>
-        <td>${z.floor_area_sqft.toFixed(1)}</td>
-      </tr>
-    `).join("");
+    const termRows = zones.map(z => {
+      const dAir = isSI ? (z.design_airflow_cfm * 0.4719).toFixed(0) : z.design_airflow_cfm;
+      const mAir = isSI ? (z.min_airflow_cfm * 0.4719).toFixed(0) : z.min_airflow_cfm;
+      const airPerA = isSI ? (z.cfm_per_sqft * 5.08).toFixed(2) : z.cfm_per_sqft.toFixed(2);
+      const rhCap = isSI ? (z.reheat_coil_mbh * 0.2931).toFixed(1) : z.reheat_coil_mbh.toFixed(1);
+      return `
+        <tr>
+          <td>${z.zone_name}</td>
+          <td>${dAir}</td>
+          <td>${mAir}</td>
+          <td>${airPerA}</td>
+          <td>${rhCap}</td>
+          <td>-</td>
+          <td>0.0</td>
+          <td>-</td>
+          <td>0</td>
+        </tr>
+      `;
+    }).join("");
+
+    const peakRows = zones.map(z => {
+      const cSens = isSI ? (z.cooling_sensible_mbh * 0.2931).toFixed(1) : z.cooling_sensible_mbh.toFixed(1);
+      const hLoad = isSI ? (z.heating_load_mbh * 0.2931).toFixed(1) : z.heating_load_mbh.toFixed(1);
+      const fArea = isSI ? (z.floor_area_sqft * 0.0929).toFixed(1) : z.floor_area_sqft.toFixed(1);
+      return `
+        <tr>
+          <td>${z.zone_name}</td>
+          <td>${cSens}</td>
+          <td>${z.time_of_peak}</td>
+          <td>${hLoad}</td>
+          <td>${fArea}</td>
+        </tr>
+      `;
+    }).join("");
 
     const spaceRows = zones.map(z => {
-      const sItems = z.spaces.map(sp => `
-        <tr>
-          <td style="padding-left:18px">${sp.space_name}</td>
-          <td>${sp.peak_sensible_mbh.toFixed(1)}</td>
-          <td>${sp.time_of_peak}</td>
-          <td>${sp.design_airflow_cfm}</td>
-          <td>${sp.heating_load_mbh.toFixed(1)}</td>
-          <td>${sp.floor_area_sqft.toFixed(1)}</td>
-          <td>${sp.cfm_per_sqft.toFixed(2)}</td>
-        </tr>
-      `).join("");
+      const sItems = z.spaces.map(sp => {
+        const spSens = isSI ? (sp.peak_sensible_mbh * 0.2931).toFixed(1) : sp.peak_sensible_mbh.toFixed(1);
+        const spFlow = isSI ? (sp.design_airflow_cfm * 0.4719).toFixed(0) : sp.design_airflow_cfm;
+        const spHtg = isSI ? (sp.heating_load_mbh * 0.2931).toFixed(1) : sp.heating_load_mbh.toFixed(1);
+        const spArea = isSI ? (sp.floor_area_sqft * 0.0929).toFixed(1) : sp.floor_area_sqft.toFixed(1);
+        const spPerA = isSI ? (sp.cfm_per_sqft * 5.08).toFixed(2) : sp.cfm_per_sqft.toFixed(2);
+        return `
+          <tr>
+            <td style="padding-left:18px">${sp.space_name}</td>
+            <td>${spSens}</td>
+            <td>${sp.time_of_peak}</td>
+            <td>${spFlow}</td>
+            <td>${spHtg}</td>
+            <td>${spArea}</td>
+            <td>${spPerA}</td>
+          </tr>
+        `;
+      }).join("");
       return `
         <tr class="zone-group-row"><td colspan="7">${z.zone_name}</td></tr>
         ${sItems}
@@ -249,50 +310,50 @@ const reportsUI = {
 
     return `
       <div class="hap-report-page">
-        ${this.headerBox(`Zone Sizing Summary for ${s.system_name}`, `(In Alternative: ${altName})`, proj, nowStr)}
-        <div class="hap-sec-heading">Zone Terminal Sizing Data</div>
+        ${this.headerBox(titleStr, altStr, proj, nowStr)}
+        <div class="hap-sec-heading">${isPT ? "Dados de Dimensionamento dos Terminais de Zona" : "Zone Terminal Sizing Data"}</div>
         <table class="hap-table">
           <thead>
             <tr>
-              <th>Zone Name</th>
-              <th>Design Supply Airflow (CFM)</th>
-              <th>Minimum Supply Airflow (CFM)</th>
-              <th>Zone CFM/sqft</th>
-              <th>Reheat Coil Capacity (MBH)</th>
-              <th>Reheat Water gpm @ 20.0 F</th>
-              <th>Zone Htg Unit Capacity (MBH)</th>
-              <th>Zone Htg Water gpm</th>
-              <th>Mixing Box Fan (CFM)</th>
+              <th>${isPT ? "Nome da Zona" : "Zone Name"}</th>
+              <th>${isPT ? "Vazão de Insuflamento de Projeto" : "Design Supply Airflow"} (${isSI ? "L/s" : "CFM"})</th>
+              <th>${isPT ? "Vazão Mínima de Insuflamento" : "Minimum Supply Airflow"} (${isSI ? "L/s" : "CFM"})</th>
+              <th>${isSI ? "L/s / m²" : "Zone CFM/sqft"}</th>
+              <th>${isPT ? "Capacidade Serpentina Reaquec." : "Reheat Coil Capacity"} (${isSI ? "kW" : "MBH"})</th>
+              <th>${isPT ? "Água Reaquec." : "Reheat Water gpm"}</th>
+              <th>${isPT ? "Unid. Aquec. Zona" : "Zone Htg Unit Capacity"}</th>
+              <th>${isPT ? "Vazão Água" : "Water gpm"}</th>
+              <th>${isPT ? "Ventilador Caixa Mistura" : "Mixing Box Fan"}</th>
             </tr>
           </thead>
           <tbody>${termRows}</tbody>
         </table>
 
-        <div class="hap-sec-heading">Zone Peak Sensible Loads</div>
+        <div class="hap-sec-heading">${isPT ? "Cargas Sensíveis de Pico das Zonas" : "Zone Peak Sensible Loads"}</div>
         <table class="hap-table">
           <thead>
             <tr>
-              <th>Zone Name</th>
-              <th>Zone Cooling Sensible (MBH)</th>
-              <th>Time of Peak Sensible Cooling Load</th>
-              <th>Zone Heating Load (MBH)</th>
-              <th>Zone Floor Area (sqft)</th>
+              <th>${isPT ? "Nome da Zona" : "Zone Name"}</th>
+              <th>${isPT ? "Resfriamento Sensível" : "Zone Cooling Sensible"} (${isSI ? "kW" : "MBH"})</th>
+              <th>${isPT ? "Horário do Pico de Carga" : "Time of Peak Sensible Cooling Load"}</th>
+              <th>${isPT ? "Aquecimento da Zona" : "Zone Heating Load"} (${isSI ? "kW" : "MBH"})</th>
+              <th>${isPT ? "Área de Piso" : "Zone Floor Area"} (${isSI ? "m²" : "sqft"})</th>
             </tr>
           </thead>
           <tbody>${peakRows}</tbody>
         </table>
 
-        <div class="hap-sec-heading">Space Loads and Airflows</div>
+        <div class="hap-sec-heading">${isPT ? "Cargas e Vazões por Ambiente / Espaço" : "Space Loads and Airflows"}</div>
         <table class="hap-table">
           <thead>
             <tr>
-              <th>Zone Name / Space Name</th>
-              <th>Cooling Sensible (MBH)</th>
-              <th>Time of Peak Sensible Load</th>
-              <th>Air Flow (CFM)</th>
-              <th>Heating Load (MBH)</th>
-              <th>Floor Area (sqft)</th>
-              <th>Space CFM/sqft</th>
+              <th>${isPT ? "Zona / Espaço" : "Zone Name / Space Name"}</th>
+              <th>${isPT ? "Resfriamento Sensível" : "Cooling Sensible"} (${isSI ? "kW" : "MBH"})</th>
+              <th>${isPT ? "Horário do Pico" : "Time of Peak Sensible Load"}</th>
+              <th>${isPT ? "Vazão de Ar" : "Air Flow"} (${isSI ? "L/s" : "CFM"})</th>
+              <th>${isPT ? "Carga de Aquecimento" : "Heating Load"} (${isSI ? "kW" : "MBH"})</th>
+              <th>${isPT ? "Área de Piso" : "Floor Area"} (${isSI ? "m²" : "sqft"})</th>
+              <th>${isSI ? "L/s / m²" : "Space CFM/sqft"}</th>
             </tr>
           </thead>
           <tbody>${spaceRows}</tbody>
@@ -547,6 +608,9 @@ const reportsUI = {
   },
 
   buildAnnualComponentCosts(proj, calc, nowStr) {
+    if (!calc.billing_and_costs || !calc.billing_and_costs.annual_component_costs) {
+      return this.buildArchivedModuleNotice("Custos Anuais por Componente & Tarifas", "obsoleto/kapit_engine/tariffs_and_leed.py", proj, nowStr);
+    }
     const c = calc.billing_and_costs.annual_component_costs;
     const altName = (proj.alternatives && proj.alternatives[0] && proj.alternatives[0].name) || "ALT1 - VAV RTU";
 
@@ -619,7 +683,7 @@ const reportsUI = {
 
   drawCostPieChart(costData) {
     const cvs = document.getElementById("rpt-cost-pie-canvas");
-    if (!cvs) return;
+    if (!cvs || !costData || !costData.rows) return;
     const ctx = cvs.getContext("2d");
     ctx.clearRect(0, 0, cvs.width, cvs.height);
 
@@ -669,6 +733,9 @@ const reportsUI = {
   },
 
   buildMonthlyEnergyByComponent(proj, calc, nowStr) {
+    if (!calc.air_system.monthly_simulation || calc.air_system.monthly_simulation.length === 0) {
+      return this.buildArchivedModuleNotice("Consumo Mensal de Energia (Simulação Anual 8.760h)", "obsoleto/kapit_engine/air_systems_full_with_8760h.py", proj, nowStr);
+    }
     const mSim = calc.air_system.monthly_simulation;
     const altName = (proj.alternatives && proj.alternatives[0] && proj.alternatives[0].name) || "ALT1 - VAV RTU";
     const cols = key => mSim.map(m => `<td>${m[key]}</td>`).join("");
@@ -706,6 +773,9 @@ const reportsUI = {
   },
 
   buildBillingDetailsElectric(proj, calc, nowStr) {
+    if (!calc.billing_and_costs || !calc.billing_and_costs.billing_details_electric || !calc.billing_and_costs.billing_details_electric.periods) {
+      return this.buildArchivedModuleNotice("Detalhes de Faturamento - Elétrico", "obsoleto/kapit_engine/tariffs_and_leed.py", proj, nowStr);
+    }
     const b = calc.billing_and_costs.billing_details_electric;
     const altName = (proj.alternatives && proj.alternatives[0] && proj.alternatives[0].name) || "ALT1 - VAV RTU";
 
@@ -789,6 +859,9 @@ const reportsUI = {
   },
 
   buildMonthlySimulationResults(proj, calc, nowStr) {
+    if (!calc.air_system.monthly_simulation || calc.air_system.monthly_simulation.length === 0) {
+      return this.buildArchivedModuleNotice("Resultados da Simulação Mensal (8.760h)", "obsoleto/kapit_engine/air_systems_full_with_8760h.py", proj, nowStr);
+    }
     const s = calc.air_system.sizing_summary;
     const mSim = calc.air_system.monthly_simulation;
     const tot = calc.air_system.simulation_totals;
@@ -871,6 +944,9 @@ const reportsUI = {
   },
 
   buildLeedAnd901Summary(proj, calc, nowStr) {
+    if (!calc.leed_and_90_1 || !calc.leed_and_90_1.baseline_rotations) {
+      return this.buildArchivedModuleNotice("Resumo ASHRAE 90.1 Apêndice G / LEED v4 (4 Rotações)", "obsoleto/kapit_engine/tariffs_and_leed.py", proj, nowStr);
+    }
     const l = calc.leed_and_90_1;
     const rotRows = l.baseline_rotations.map(r => `
       <tr>

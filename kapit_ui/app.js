@@ -8,9 +8,7 @@ const TREE_CATEGORIES = [
   { id: "weather", label: "Weather", icon: "☀️", group: "Project" },
   { id: "buildings", label: "Buildings", icon: "🏢", group: "Project" },
   { id: "space_models", label: "Space Models", icon: "📐", group: "Project" },
-  { id: "air_systems", label: "Systems", icon: "❄️", group: "Project" },
-  { id: "plants", label: "Plants", icon: "⚙️", group: "Project" },
-  { id: "alternatives", label: "Alternatives", icon: "📊", group: "Project" },
+  { id: "air_systems", label: "Air Systems", icon: "❄️", group: "Project" },
   { id: "space_types", label: "Space Types", icon: "🏷️", group: "Project Libraries" },
   { id: "schedules", label: "Schedules", icon: "🕒", group: "Project Libraries" },
   { id: "walls", label: "Walls", icon: "🧱", group: "Project Libraries" },
@@ -20,11 +18,6 @@ const TREE_CATEGORIES = [
   { id: "windows", label: "Windows", icon: "🪟", group: "Project Libraries" },
   { id: "doors", label: "Doors", icon: "🚪", group: "Project Libraries" },
   { id: "shades", label: "Shades", icon: "⛱️", group: "Project Libraries" },
-  { id: "chillers", label: "Chillers", icon: "🧊", group: "Project Libraries" },
-  { id: "cooling_towers", label: "Cooling Towers", icon: "💨", group: "Project Libraries" },
-  { id: "boilers", label: "Boilers", icon: "🔥", group: "Project Libraries" },
-  { id: "electric_rates", label: "Electric Rates", icon: "⚡", group: "Project Libraries" },
-  { id: "fuel_rates", label: "Fuel Rates", icon: "🔥", group: "Project Libraries" },
 ];
 
 const app = {
@@ -51,12 +44,33 @@ const app = {
       }
       
       this.setupGlobalKeyboardShortcuts();
+      this.setupMenuInteractions();
       this.refreshAllUI();
     } catch (err) {
       console.error("Failed to initialize project:", err);
       const msg = document.getElementById("status-msg");
       if (msg) msg.textContent = "Error loading project: " + err.message;
     }
+  },
+
+  setupMenuInteractions() {
+    document.querySelectorAll(".menu-item").forEach(item => {
+      item.addEventListener("click", (e) => {
+        if (e.target.tagName === "BUTTON") {
+          item.classList.remove("open");
+          return;
+        }
+        document.querySelectorAll(".menu-item").forEach(other => {
+          if (other !== item) other.classList.remove("open");
+        });
+        item.classList.toggle("open");
+      });
+    });
+    document.addEventListener("click", (e) => {
+      if (!e.target.closest(".menu-bar")) {
+        document.querySelectorAll(".menu-item").forEach(item => item.classList.remove("open"));
+      }
+    });
   },
 
   setupGlobalKeyboardShortcuts() {
@@ -111,16 +125,34 @@ const app = {
   refreshAllUI() {
     const proj = this.state.project;
     if (!proj) return;
+
+    if (typeof I18N !== "undefined") {
+      I18N.applyTranslationsToDOM();
+    }
+
+    const isSI = (proj.project_info && proj.project_info.units_system === "SI");
+    const isPT = typeof I18N !== "undefined" && I18N.getLanguage() === "pt-BR";
+
     document.getElementById("window-title").textContent =
       `Kapit 0.1 - [${proj.project_info.name}]`;
     document.getElementById("status-vent").textContent =
-      `Ventilation Standard: ${proj.project_info.ventilation_standard}`;
+      `${I18N.t("status.vent_prefix")} ${proj.project_info.ventilation_standard}`;
     document.getElementById("status-energy").textContent =
-      `Energy Standard: ${proj.project_info.energy_standard}`;
+      `${I18N.t("status.energy_prefix")} ${proj.project_info.energy_standard}`;
     document.getElementById("status-units").textContent =
-      `Units: ${proj.project_info.units_system === "SI" ? "Metric (SI)" : "English (IP)"}`;
-    document.getElementById("btn-unit-toggle").textContent =
-      `Units: ${proj.project_info.units_system === "SI" ? "SI (Metric)" : "IP (English)"}`;
+      `${I18N.t("status.units_prefix")} ${isSI ? I18N.t("status.units_si") : I18N.t("status.units_ip")}`;
+    const btnUnit = document.getElementById("btn-unit-toggle");
+    if (btnUnit) {
+      btnUnit.innerHTML = `<span>${isSI ? I18N.t("toolbar.units_si") : I18N.t("toolbar.units_ip")}</span>`;
+    }
+    const btnLang = document.getElementById("btn-lang-toggle");
+    if (btnLang) {
+      btnLang.innerHTML = `<span>${isPT ? "🌐 PT-BR" : "🌐 EN"}</span>`;
+    }
+    const paneTitle = document.getElementById("pane-header-title");
+    if (paneTitle) {
+      paneTitle.textContent = isPT ? "Navegação do Projeto" : "Project Navigation Tree";
+    }
 
     this.renderTree();
     this.renderKpiCard();
@@ -129,7 +161,9 @@ const app = {
     this.renderBuildingCanvas();
     this.renderPsychrometricChart();
     this.calcCustomPsychPoint();
-    reportsUI.renderSelectedReport();
+    if (typeof reportsUI !== "undefined" && reportsUI.renderSelectedReport) {
+      reportsUI.renderSelectedReport();
+    }
   },
 
   getCategoryItems(catId) {
@@ -152,13 +186,16 @@ const app = {
     TREE_CATEGORIES.forEach(cat => {
       if (cat.group !== lastGroup) {
         lastGroup = cat.group;
-        html += `<div class="tree-group-title">📁 ${cat.group}</div>`;
+        const gKey = cat.group === "Project" ? "tree.group_project" : "tree.group_libraries";
+        const groupLabel = typeof I18N !== "undefined" ? I18N.t(gKey) : cat.group;
+        html += `<div class="tree-group-title">📁 ${groupLabel}</div>`;
       }
       const items = this.getCategoryItems(cat.id);
       const isAct = this.state.currentCategory === cat.id ? "active" : "";
+      const catLabel = typeof I18N !== "undefined" ? I18N.t(`tree.${cat.id}`) : cat.label;
       html += `
-        <div class="tree-node ${isAct}" onclick="app.selectCategory('${cat.id}')">
-          <span>${cat.icon} ${cat.label}</span>
+        <div class="tree-node ${isAct}" onclick="app.selectCategory('${cat.id}')" ondblclick="app.onTreeDoubleClick('${cat.id}')" title="Clique para ver propriedades, duplo clique para atalho">
+          <span>${cat.icon} ${catLabel}</span>
           <span class="tree-badge">${items.length}</span>
         </div>
       `;
@@ -170,51 +207,86 @@ const app = {
     this.state.currentCategory = catId;
     this.state.selectedIndex = 0;
     this.state.activeSubTab = 0;
+    this.switchWorkspaceTab("explorer");
     this.renderTree();
     this.renderCategoryList();
     this.renderEntityEditor();
   },
 
+  onTreeDoubleClick(catId) {
+    if (catId === "buildings" || catId === "space_models") {
+      this.switchWorkspaceTab("cad3d");
+    } else if (catId === "weather") {
+      this.openWeatherStationBrowser();
+    } else {
+      this.openEntityModal(0);
+    }
+  },
+
   renderKpiCard() {
     const calc = this.state.calculations;
-    if (!calc) return;
+    if (!calc || !calc.air_system || !calc.air_system.sizing_summary) return;
     const s = calc.air_system.sizing_summary;
     const cc = s.central_cooling_coil;
     const ph = s.preheat_coil;
-    const b = calc.billing_and_costs.billing_details_electric.totals;
-    const isSI = this.state.project.project_info.units_system === "SI";
+    const isSI = (this.state.project && this.state.project.project_info.units_system === "SI");
+    const isPT = typeof I18N !== "undefined" && I18N.getLanguage() === "pt-BR";
+
+    const elTons = document.getElementById("kpi-tons");
+    const elCfm = document.getElementById("kpi-cfm");
+    const elOa = document.getElementById("kpi-oa");
+    const elHeat = document.getElementById("kpi-heat");
+    const elShr = document.getElementById("kpi-shr");
+    const elDens = document.getElementById("kpi-density");
 
     if (isSI) {
-      document.getElementById("kpi-tons").textContent = `${(cc.total_coil_tons * 3.517).toFixed(1)} kW (${cc.total_coil_tons.toFixed(1)} Tons)`;
-      document.getElementById("kpi-cfm").textContent = `${(s.supply_fan.design_cfm * 0.4719).toFixed(0)} L/s`;
-      document.getElementById("kpi-oa").textContent = `${(s.outdoor_ventilation.design_airflow_cfm * 0.4719).toFixed(0)} L/s`;
+      if (elTons) elTons.textContent = `${(cc.total_coil_tons * 3.517).toFixed(1)} kW (${cc.total_coil_tons.toFixed(1)} TR)`;
+      if (elCfm) elCfm.textContent = `${(s.supply_fan.design_cfm * 0.4719).toFixed(0)} L/s`;
+      if (elOa) elOa.textContent = `${(s.outdoor_ventilation.design_airflow_cfm * 0.4719).toFixed(0)} L/s`;
+      if (elHeat) elHeat.textContent = `${(ph.max_coil_load_mbh * 0.2931).toFixed(1)} kW`;
+      if (elShr) elShr.textContent = `${cc.sensible_heat_ratio.toFixed(2)}`;
+      if (elDens) elDens.textContent = `${(cc.btuh_per_sqft * 3.15459).toFixed(1)} W/m²`;
     } else {
-      document.getElementById("kpi-tons").textContent = `${cc.total_coil_tons.toFixed(1)} Tons (${cc.total_coil_mbh.toFixed(1)} MBH)`;
-      document.getElementById("kpi-cfm").textContent = `${s.supply_fan.design_cfm.toLocaleString()} CFM`;
-      document.getElementById("kpi-oa").textContent = `${s.outdoor_ventilation.design_airflow_cfm.toLocaleString()} CFM`;
+      if (elTons) elTons.textContent = `${cc.total_coil_tons.toFixed(1)} Tons (${cc.total_coil_mbh.toFixed(1)} MBH)`;
+      if (elCfm) elCfm.textContent = `${s.supply_fan.design_cfm.toLocaleString()} CFM`;
+      if (elOa) elOa.textContent = `${s.outdoor_ventilation.design_airflow_cfm.toLocaleString()} CFM`;
+      if (elHeat) elHeat.textContent = `${ph.max_coil_load_mbh.toFixed(1)} MBH`;
+      if (elShr) elShr.textContent = `${cc.sensible_heat_ratio.toFixed(2)}`;
+      if (elDens) elDens.textContent = `${cc.btuh_per_sqft.toFixed(1)} Btu/(hr·sqft)`;
     }
-    document.getElementById("kpi-heat").textContent = `${ph.max_coil_load_mbh.toFixed(1)} MBH Preheat`;
-    document.getElementById("kpi-kwh").textContent = `${b.total_consumption_kwh.toLocaleString()} kWh/yr`;
-    document.getElementById("kpi-cost").textContent = `$${b.total_charge_usd.toLocaleString()} / yr`;
   },
 
   renderCategoryList() {
     const catId = this.state.currentCategory;
     const catMeta = TREE_CATEGORIES.find(c => c.id === catId);
+    const catLabel = typeof I18N !== "undefined" ? I18N.t(`tree.${catId}`) : (catMeta ? catMeta.label : catId);
+    const isPT = typeof I18N !== "undefined" && I18N.getLanguage() === "pt-BR";
+    const isSI = (this.state.project && this.state.project.project_info.units_system === "SI");
+
     document.getElementById("current-category-title").textContent =
-      `${catMeta ? catMeta.label : catId} — Items in Project`;
+      `${catLabel} — ${isPT ? "Itens no Projeto" : "Items in Project"}`;
 
     const items = this.getCategoryItems(catId);
     const wrap = document.getElementById("entity-list-container");
 
     if (catId === "weather") {
       const w = items[0];
+      const sumDb = isSI ? `${((w.summer_db_f - 32) * 5/9).toFixed(1)} / ${((w.summer_wb_f - 32) * 5/9).toFixed(1)} °C` : `${w.summer_db_f} / ${w.summer_wb_f} °F`;
+      const winDb = isSI ? `${((w.winter_db_f - 32) * 5/9).toFixed(1)} °C` : `${w.winter_db_f} °F`;
+      const elev = isSI ? `${(w.elevation_ft * 0.3048).toFixed(1)} m` : `${w.elevation_ft} ft`;
       wrap.innerHTML = `
         <table class="data-table">
-          <thead><tr><th>Location</th><th>Climate Zone</th><th>Summer DB / WB (F)</th><th>Winter DB (F)</th><th>Elevation (ft)</th><th>Simulation Weather</th></tr></thead>
+          <thead><tr>
+            <th>${isPT ? "Localidade" : "Location"}</th>
+            <th>${isPT ? "Zona Climática" : "Climate Zone"}</th>
+            <th>${isPT ? "TBS / TBU Verão" : "Summer DB / WB"}</th>
+            <th>${isPT ? "TBS Inverno" : "Winter DB"}</th>
+            <th>${isPT ? "Elevação" : "Elevation"}</th>
+            <th>${isPT ? "Arquivo de Simulação" : "Simulation Weather"}</th>
+          </tr></thead>
           <tbody>
-            <tr class="selected-row" ondblclick="app.openWeatherStationBrowser()" style="cursor:pointer" title="Double-click to open Weather Station Browser">
-              <td>${w.location}</td><td>${w.climate_zone}</td><td>${w.summer_db_f} / ${w.summer_wb_f}</td><td>${w.winter_db_f}</td><td>${w.elevation_ft}</td><td>${w.sim_weather_name}</td>
+            <tr class="selected-row" ondblclick="app.openWeatherStationBrowser()" style="cursor:pointer" title="${isPT ? 'Duplo clique para abrir catálogo de estações' : 'Double-click to open Weather Station Browser'}">
+              <td><strong>${w.location}</strong></td><td>${w.climate_zone}</td><td>${sumDb}</td><td>${winDb}</td><td>${elev}</td><td>${w.sim_weather_name}</td>
             </tr>
           </tbody>
         </table>
@@ -222,19 +294,24 @@ const app = {
       return;
     }
 
-    let headers = ["Name", "Type / Details", "Summary Parameter"];
+    let headers = [
+      typeof I18N !== "undefined" ? I18N.t("list.th_name") : "Name",
+      typeof I18N !== "undefined" ? I18N.t("list.th_type") : "Type / Details",
+      typeof I18N !== "undefined" ? I18N.t("list.th_summary") : "Summary Parameter"
+    ];
+
     const rowsHtml = items.map((it, idx) => {
       const sel = idx === this.state.selectedIndex ? "selected-row" : "";
       const name = it.name || it.location || `Item ${idx + 1}`;
       let col2 = it.system_type || it.wall_type || it.schedule_type || it.rate_type || it.chiller_type || it.boiler_type || it.door_type || it.building_name || "Standard";
-      let col3 = it.overall_u !== undefined ? `U = ${it.overall_u} BTU/(hr·sqft·F)` :
-                 it.flat_price_usd_per_kwh !== undefined ? `$${it.flat_price_usd_per_kwh}/kWh` :
-                 it.flat_price_usd_per_unit !== undefined ? `$${it.flat_price_usd_per_unit}/MCF` :
-                 it.spaces ? `${it.spaces.length} Spaces` :
-                 it.levels ? `${it.levels.length} Level(s)` :
-                 it.number_of_zones ? `${it.number_of_zones} Zones` : "Active";
+      let col3 = it.overall_u !== undefined ? (isSI ? `U = ${(it.overall_u * 5.67826).toFixed(3)} W/(m²·K)` : `U = ${it.overall_u} BTU/(hr·sqft·F)`) :
+                 it.flat_price_usd_per_kwh !== undefined ? (isPT ? `R$ ${(it.flat_price_usd_per_kwh * 5.5).toFixed(4)}/kWh` : `$${it.flat_price_usd_per_kwh}/kWh`) :
+                 it.flat_price_usd_per_unit !== undefined ? (isPT ? `R$ ${(it.flat_price_usd_per_unit * 5.5).toFixed(2)}/MCF` : `$${it.flat_price_usd_per_unit}/MCF`) :
+                 it.spaces ? `${it.spaces.length} ${isPT ? "Espaços" : "Spaces"}` :
+                 it.levels ? `${it.levels.length} ${isPT ? "Nível(is)" : "Level(s)"}` :
+                 it.number_of_zones ? `${it.number_of_zones} ${isPT ? "Zonas" : "Zones"}` : (isPT ? "Ativo" : "Active");
       return `
-        <tr class="${sel}" onclick="app.selectItemRow(${idx})" ondblclick="app.openEntityModal(${idx})" style="cursor:pointer" title="Click to view, double-click for modal dialog">
+        <tr class="${sel}" onclick="app.selectItemRow(${idx})" ondblclick="app.openEntityModal(${idx})" style="cursor:pointer" title="${isPT ? 'Clique para ver, duplo clique para abrir diálogo' : 'Click to view, double-click for modal dialog'}">
           <td><strong>${name}</strong></td>
           <td>${col2}</td>
           <td>${col3}</td>
@@ -242,12 +319,14 @@ const app = {
       `;
     }).join("");
 
+    const createText = typeof I18N !== "undefined" ? I18N.t("list.create_hint", { cat: catLabel }) : `<Create New ${catLabel} Item...>`;
+
     wrap.innerHTML = `
       <table class="data-table">
         <thead><tr><th>${headers[0]}</th><th>${headers[1]}</th><th>${headers[2]}</th></tr></thead>
         <tbody>
           <tr onclick="app.createNewEntityInCurrentCategory()" style="color:#005a9e;font-style:italic;cursor:pointer">
-            <td colspan="3">&lt;Create New ${catMeta ? catMeta.label : ""} Item...&gt;</td>
+            <td colspan="3">&lt;${createText}&gt;</td>
           </tr>
           ${rowsHtml}
         </tbody>
@@ -439,6 +518,12 @@ const app = {
         </tr>
       `).join("");
       body = `
+        <div style="margin-bottom:10px;display:flex;justify-content:space-between;align-items:center;background:#f0f9ff;border:1px solid #bae6fd;padding:8px 12px;border-radius:4px">
+          <span style="font-size:12px;color:#0369a1;font-weight:600">📐 Geometria Arquitetônica & Planta Baixa:</span>
+          <button type="button" class="btn-sm primary" onclick="app.switchWorkspaceTab('cad3d')" style="background:#0284c7;color:#fff;font-weight:600;padding:5px 14px;border:none;border-radius:4px;cursor:pointer">
+            🏢 Abrir no Modelador 2D / 3D &rarr;
+          </button>
+        </div>
         <table class="data-table">
           <thead>
             <tr>
@@ -658,7 +743,16 @@ const app = {
       }
     }).join("");
 
-    return `<div class="editor-body"><div class="form-grid">${inputs}</div>${complexHtml}</div>`;
+    const bldgBanner = catId === "buildings" ? `
+      <div style="margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;background:#f0f9ff;border:1px solid #bae6fd;padding:8px 12px;border-radius:4px">
+        <span style="font-size:12px;color:#0369a1;font-weight:600">🏢 Planta Baixa Arquitetônica & Modelo 3D:</span>
+        <button type="button" class="btn-sm primary" onclick="app.switchWorkspaceTab('cad3d')" style="background:#0284c7;color:#fff;font-weight:600;padding:5px 14px;border:none;border-radius:4px;cursor:pointer">
+          🏢 Abrir no Modelador 2D / 3D &rarr;
+        </button>
+      </div>
+    ` : "";
+
+    return `<div class="editor-body">${bldgBanner}<div class="form-grid">${inputs}</div>${complexHtml}</div>`;
   },
 
   async saveAndCalculate() {
@@ -745,6 +839,12 @@ const app = {
     const cur = this.state.project.project_info.units_system;
     this.state.project.project_info.units_system = cur === "SI" ? "IP" : "SI";
     this.refreshAllUI();
+  },
+
+  toggleLanguage() {
+    if (typeof I18N !== "undefined") {
+      I18N.toggleLanguage();
+    }
   },
 
   async evalInlineCalc() {
@@ -990,11 +1090,24 @@ const app = {
     // Render table in side panel
     const tblWrap = document.getElementById("system-psych-table-wrap");
     if (tblWrap && pts) {
+      const isSI = (this.state.project && this.state.project.project_info.units_system === "SI");
+      const isPT = typeof I18N !== "undefined" && I18N.getLanguage() === "pt-BR";
+      const thFlow = isSI ? "L/s" : "CFM";
+      const thDb = isSI ? "TBS (°C)" : "DB (°F)";
+      const thWb = isSI ? "TBU (°C)" : "WB (°F)";
+      const thH = isSI ? "h (kJ/kg)" : "h (BTU/lb)";
+
       tblWrap.innerHTML = `
         <table class="data-table">
-          <thead><tr><th>Point</th><th>CFM</th><th>DB (F)</th><th>WB (F)</th><th>RH (%)</th><th>h (BTU/lb)</th></tr></thead>
+          <thead><tr><th>${isPT ? "Ponto de Estado" : "State Point"}</th><th>${thFlow}</th><th>${thDb}</th><th>${thWb}</th><th>UR (%)</th><th>${thH}</th></tr></thead>
           <tbody>
-            ${pts.map((p, i) => `<tr><td>${i+1}. ${p.name}</td><td>${p.cfm.toFixed(0)}</td><td>${p.db_f.toFixed(1)}</td><td>${p.wb_f.toFixed(1)}</td><td>${p.rh_pct.toFixed(0)}%</td><td>${p.h_btu_lb.toFixed(1)}</td></tr>`).join("")}
+            ${pts.map((p, i) => {
+              const flowStr = isSI ? (p.cfm * 0.4719).toFixed(0) : p.cfm.toFixed(0);
+              const dbStr = isSI ? ((p.db_f - 32) * 5/9).toFixed(1) : p.db_f.toFixed(1);
+              const wbStr = isSI ? ((p.wb_f - 32) * 5/9).toFixed(1) : p.wb_f.toFixed(1);
+              const hStr = isSI ? (p.h_btu_lb * 2.326).toFixed(1) : p.h_btu_lb.toFixed(1);
+              return `<tr><td>${i+1}. ${p.name}</td><td>${flowStr}</td><td>${dbStr}</td><td>${wbStr}</td><td>${p.rh_pct.toFixed(0)}%</td><td>${hStr}</td></tr>`;
+            }).join("")}
           </tbody>
         </table>
       `;
@@ -1006,6 +1119,8 @@ const app = {
     const db = parseFloat(document.getElementById("ps-db").value || 85.3);
     const wb = parseFloat(document.getElementById("ps-wb").value || 71.2);
     const elev = this.state.project ? this.state.project.weather.elevation_ft : 790.0;
+    const isSI = (this.state.project && this.state.project.project_info.units_system === "SI");
+    const isPT = typeof I18N !== "undefined" && I18N.getLanguage() === "pt-BR";
 
     const res = await fetch("/api/psychrometrics/calc", {
       method: "POST",
@@ -1016,13 +1131,30 @@ const app = {
     const s = data.state;
     const card = document.getElementById("custom-psych-output");
     if (card && s) {
-      card.innerHTML = `
-        <div><strong>Dry-Bulb / Wet-Bulb:</strong> ${s.db_f.toFixed(1)} °F / ${s.wb_f.toFixed(1)} °F</div>
-        <div><strong>Dew-Point / RH:</strong> ${s.dp_f.toFixed(1)} °F / ${s.rh_pct.toFixed(1)} %</div>
-        <div><strong>Humidity Ratio W:</strong> ${s.w_grains_lb.toFixed(1)} grains/lb (${s.w_lb_lb.toFixed(5)} lb/lb)</div>
-        <div><strong>Enthalpy h:</strong> ${s.h_btu_lb.toFixed(2)} BTU/lb_da</div>
-        <div><strong>Specific Volume v:</strong> ${s.v_cuft_lb.toFixed(2)} ft³/lb_da (P = ${s.p_atm_psia} psia)</div>
-      `;
+      const dbC = ((s.db_f - 32) * 5/9).toFixed(1);
+      const wbC = ((s.wb_f - 32) * 5/9).toFixed(1);
+      const dpC = ((s.dp_f - 32) * 5/9).toFixed(1);
+      const hKj = (s.h_btu_lb * 2.326).toFixed(2);
+      const vM3 = (s.v_cuft_lb * 0.062428).toFixed(3);
+      const pKpa = (s.p_atm_psia * 6.89476).toFixed(2);
+
+      if (isSI) {
+        card.innerHTML = `
+          <div><strong>${isPT ? "Bulbo Seco / Bulbo Úmido" : "Dry-Bulb / Wet-Bulb"}:</strong> ${dbC} °C / ${wbC} °C (${s.db_f.toFixed(1)} °F / ${s.wb_f.toFixed(1)} °F)</div>
+          <div><strong>${isPT ? "Ponto de Orvalho / UR" : "Dew-Point / RH"}:</strong> ${dpC} °C / ${s.rh_pct.toFixed(1)} %</div>
+          <div><strong>${isPT ? "Razão de Umidade W" : "Humidity Ratio W"}:</strong> ${(s.w_lb_lb * 1000).toFixed(2)} g/kg (${s.w_lb_lb.toFixed(5)} kg/kg)</div>
+          <div><strong>${isPT ? "Entalpia Específica h" : "Specific Enthalpy h"}:</strong> ${hKj} kJ/kg (${s.h_btu_lb.toFixed(2)} BTU/lb)</div>
+          <div><strong>${isPT ? "Volume Específico v" : "Specific Volume v"}:</strong> ${vM3} m³/kg (P = ${pKpa} kPa)</div>
+        `;
+      } else {
+        card.innerHTML = `
+          <div><strong>Dry-Bulb / Wet-Bulb:</strong> ${s.db_f.toFixed(1)} °F / ${s.wb_f.toFixed(1)} °F</div>
+          <div><strong>Dew-Point / RH:</strong> ${s.dp_f.toFixed(1)} °F / ${s.rh_pct.toFixed(1)} %</div>
+          <div><strong>Humidity Ratio W:</strong> ${s.w_grains_lb.toFixed(1)} grains/lb (${s.w_lb_lb.toFixed(5)} lb/lb)</div>
+          <div><strong>Enthalpy h:</strong> ${s.h_btu_lb.toFixed(2)} BTU/lb_da</div>
+          <div><strong>Specific Volume v:</strong> ${s.v_cuft_lb.toFixed(2)} ft³/lb_da (P = ${s.p_atm_psia} psia)</div>
+        `;
+      }
     }
   },
 
@@ -1242,17 +1374,24 @@ const app = {
     const backdrop = document.getElementById("modal-backdrop");
     const p = this.state.project.project_info;
     backdrop.style.display = "flex";
-    document.getElementById("modal-title").textContent = "Project Preferences (Units, ASHRAE Standards & LEED)";
+    document.getElementById("modal-title").textContent = typeof I18N !== "undefined" ? I18N.t("pref.title") : "Project Preferences";
+    const curLang = typeof I18N !== "undefined" ? I18N.getLanguage() : "pt-BR";
     document.getElementById("modal-body").innerHTML = `
       <div class="form-grid">
-        <label>Project Name <input type="text" id="pref-name" value="${p.name}" /></label>
-        <label>Measurement Units
+        <label>${typeof I18N !== "undefined" ? I18N.t("pref.name") : "Project Name"} <input type="text" id="pref-name" value="${p.name}" /></label>
+        <label>${typeof I18N !== "undefined" ? I18N.t("pref.units") : "Measurement Units"}
           <select id="pref-units">
-            <option value="IP" ${p.units_system==="IP"?"selected":""}>English (IP)</option>
-            <option value="SI" ${p.units_system==="SI"?"selected":""}>Metric (SI)</option>
+            <option value="SI" ${p.units_system==="SI"?"selected":""}>${typeof I18N !== "undefined" ? I18N.t("pref.units_si") : "Metric (SI)"}</option>
+            <option value="IP" ${p.units_system==="IP"?"selected":""}>${typeof I18N !== "undefined" ? I18N.t("pref.units_ip") : "English (IP)"}</option>
           </select>
         </label>
-        <label>Ventilation Standard
+        <label>${typeof I18N !== "undefined" ? I18N.t("pref.lang") : "Language"}
+          <select id="pref-lang">
+            <option value="pt-BR" ${curLang==="pt-BR"?"selected":""}>${typeof I18N !== "undefined" ? I18N.t("pref.lang_pt") : "Português (Brasil)"}</option>
+            <option value="en" ${curLang==="en"?"selected":""}>${typeof I18N !== "undefined" ? I18N.t("pref.lang_en") : "English (US)"}</option>
+          </select>
+        </label>
+        <label>${typeof I18N !== "undefined" ? I18N.t("pref.vent") : "Ventilation Standard"}
           <select id="pref-vent">
             <option>ASHRAE Standard 62.1-2022</option>
             <option>ASHRAE Standard 62.1-2019</option>
@@ -1260,7 +1399,7 @@ const app = {
             <option>ASHRAE Standard 62.1-2013</option>
           </select>
         </label>
-        <label>Energy Standard
+        <label>${typeof I18N !== "undefined" ? I18N.t("pref.energy") : "Energy Standard"}
           <select id="pref-energy">
             <option>ASHRAE Standard 90.1-2022</option>
             <option>ASHRAE Standard 90.1-2019</option>
@@ -1271,8 +1410,8 @@ const app = {
       </div>
     `;
     document.getElementById("modal-footer").innerHTML = `
-      <button class="btn-sm" onclick="app.closeModal()">Cancel</button>
-      <button class="btn-sm primary" onclick="app.savePreferences()">Save Preferences</button>
+      <button class="btn-sm" onclick="app.closeModal()">${typeof I18N !== "undefined" ? I18N.t("modal.cancel") : "Cancel"}</button>
+      <button class="btn-sm primary" onclick="app.savePreferences()">${typeof I18N !== "undefined" ? I18N.t("pref.save_btn") : "Save Preferences"}</button>
     `;
   },
 
@@ -1282,7 +1421,11 @@ const app = {
     p.units_system = document.getElementById("pref-units").value;
     p.ventilation_standard = document.getElementById("pref-vent").value;
     p.energy_standard = document.getElementById("pref-energy").value;
+    const newLang = document.getElementById("pref-lang").value;
     this.closeModal();
+    if (typeof I18N !== "undefined") {
+      I18N.setLanguage(newLang);
+    }
     this.refreshAllUI();
   },
 

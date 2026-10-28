@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="pt-BR">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Kapit 0.1 — Hourly Analysis Program (HVAC Load, Sizing, Plant & Energy Modeling)</title>
+  <title>Kapit 0.1 — Programa de Análise Horária (Cálculo Térmico HVAC, Dimensionamento e Simulação Energética)</title>
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
@@ -11,128 +11,145 @@
   <header class="app-header">
     <div class="title-bar">
       <div class="title-brand">
-        <span class="brand-badge">KAPIT 0.1</span>
+        <span class="brand-badge" data-i18n="app.brand">KAPIT 0.1</span>
         <span class="title-text" id="window-title">Kapit 0.1 - [HAP-6.4-Example-Problem]</span>
       </div>
       <div class="title-meta">
-        <span class="engine-pill">ASHRAE Standard 183 / Heat Balance</span>
-        <span class="engine-pill">ASHRAE 62.1-2022 &amp; 90.1-2022</span>
+        <span class="engine-pill" data-i18n="app.pill_std183">Norma ASHRAE 183 / Balanço Térmico</span>
+        <span class="engine-pill" data-i18n="app.pill_std62">ASHRAE 62.1-2022 &amp; 90.1-2022</span>
       </div>
     </div>
 
     <!-- Menu Bar -->
     <nav class="menu-bar">
       <div class="menu-item">
-        <span>Project</span>
+        <span data-i18n="menu.project">Projeto</span>
         <div class="menu-dropdown">
-          <button onclick="app.resetProject()">New / Reset Example Problem (Ctrl+N)</button>
-          <button onclick="app.openFilePicker('.hap,.json')">Open Project (.hap / .kapit)...</button>
-          <button onclick="app.loadInstalledExampleHap()">Load Installed HAP-6.4-Example-Problem.hap</button>
+          <button onclick="app.resetProject()" data-i18n="menu.project.new">Novo / Redefinir Problema Exemplo (Ctrl+N)</button>
+          <button onclick="app.openFilePicker('.hap,.json')" data-i18n="menu.project.open">Abrir Projeto (.hap / .kapit)...</button>
+          <button onclick="app.loadInstalledExampleHap()" data-i18n="menu.project.load_example">Carregar Exemplo Instalado HAP-6.4-Example-Problem.hap</button>
           <hr />
-          <button onclick="app.downloadProjectJson()">Save Project (.kapit JSON)</button>
-          <button onclick="window.location.href='/api/export/hap'">Export Carrier HAP 6.4 Archive (.hap)</button>
+          <button onclick="app.downloadProjectJson()" data-i18n="menu.project.save_json">Salvar Projeto (.kapit JSON)</button>
+          <button onclick="window.location.href='/api/export/hap'" data-i18n="menu.project.export_hap">Exportar Arquivo Carrier HAP 6.4 (.hap)</button>
           <hr />
-          <button onclick="app.openGbxmlImportModal()">Import gbXML BIM Geometry...</button>
-          <button onclick="window.location.href='/api/export/gbxml'">Export gbXML BIM Geometry (.xml)</button>
+          <button onclick="app.openGbxmlImportModal()" data-i18n="menu.project.import_gbxml">Importar Geometria BIM gbXML...</button>
+          <button onclick="window.location.href='/api/export/gbxml'" data-i18n="menu.project.export_gbxml">Exportar Geometria BIM gbXML (.xml)</button>
           <hr />
-          <button onclick="app.openPreferencesModal()">Preferences (Units, Standards, LEED)...</button>
+          <button onclick="app.openPreferencesModal()" data-i18n="menu.project.preferences">Preferências (Unidades, Normas, LEED)...</button>
         </div>
       </div>
 
       <div class="menu-item">
-        <span>Edit</span>
+        <span data-i18n="menu.edit">Editar</span>
         <div class="menu-dropdown">
-          <button onclick="app.createNewEntityInCurrentCategory()">Create New Item... (Ins)</button>
-          <button onclick="app.duplicateSelectedEntity()">Duplicate Selected Item (Ctrl+D)</button>
-          <button onclick="app.deleteSelectedEntity()">Delete Selected Item (Del)</button>
+          <button onclick="app.createNewEntityInCurrentCategory()" data-i18n="menu.edit.new">Criar Novo Item... (Ins)</button>
+          <button onclick="app.duplicateSelectedEntity()" data-i18n="menu.edit.duplicate">Duplicar Item Selecionado (Ctrl+D)</button>
+          <button onclick="app.deleteSelectedEntity()" data-i18n="menu.edit.delete">Excluir Item Selecionado (Del)</button>
           <hr />
-          <button onclick="app.editSelectedEntity()">Properties... (Enter)</button>
-          <button onclick="app.duplicateAsBaseline()">Duplicate Alternative as Baseline [B000] (ASHRAE 90.1)</button>
+          <button onclick="app.editSelectedEntity()" data-i18n="menu.edit.properties">Propriedades... (Enter)</button>
+          <button onclick="app.duplicateAsBaseline()" data-i18n="menu.edit.baseline">Duplicar Alternativa como Linha de Base [B000] (ASHRAE 90.1)</button>
         </div>
       </div>
 
       <div class="menu-item">
-        <span>View</span>
+        <span data-i18n="menu.view">Exibir</span>
         <div class="menu-dropdown">
-          <button onclick="app.switchWorkspaceTab('explorer')">Project Explorer &amp; Editors</button>
-          <button onclick="app.switchWorkspaceTab('cad3d')">2D Floor Plan &amp; 3D Building Viewer</button>
-          <button onclick="app.switchWorkspaceTab('psych')">Interactive Psychrometric Chart</button>
-          <button onclick="app.switchWorkspaceTab('reports')">Design Load &amp; Energy Reports Viewer</button>
+          <button onclick="app.switchWorkspaceTab('explorer')" data-i18n="menu.view.explorer">Navegador do Projeto e Editores</button>
+          <button onclick="app.switchWorkspaceTab('cad3d')" data-i18n="menu.view.cad3d">Planta Baixa 2D e Visualizador 3D do Edifício</button>
+          <button onclick="app.switchWorkspaceTab('psych')" data-i18n="menu.view.psych">Carta Psicrométrica Interativa</button>
+          <button onclick="app.switchWorkspaceTab('reports')" data-i18n="menu.view.reports">Visualizador de Relatórios de Carga e Energia</button>
         </div>
       </div>
 
       <div class="menu-item">
-        <span>Reports</span>
+        <span data-i18n="menu.reports">Relatórios</span>
         <div class="menu-dropdown">
-          <button onclick="app.openReport('sizing_summary')">Air System Sizing Summary</button>
-          <button onclick="app.openReport('zone_sizing')">Zone Sizing Summary</button>
-          <button onclick="app.openReport('ventilation')">Ventilation Sizing Summary (ASHRAE 62.1)</button>
-          <button onclick="app.openReport('heat_balance')">Air System &amp; Zone Heat Balance Summary</button>
-          <button onclick="app.openReport('psychrometrics')">System Psychrometrics &amp; Chart</button>
+          <button onclick="app.openReport('sizing_summary')" data-i18n="menu.reports.sizing_summary">1. Resumo de Dimensionamento do Sistema de Ar</button>
+          <button onclick="app.openReport('zone_sizing')" data-i18n="menu.reports.zone_sizing">2. Resumo de Dimensionamento das Zonas</button>
+          <button onclick="app.openReport('ventilation')" data-i18n="menu.reports.ventilation">3. Resumo de Ventilação e Ar Externo (ASHRAE 62.1)</button>
+          <button onclick="app.openReport('heat_balance')" data-i18n="menu.reports.heat_balance">4. Balanço Térmico do Sistema de Ar e Zonas</button>
+          <button onclick="app.openReport('psychrometrics')" data-i18n="menu.reports.psychrometrics">5. Psicrometria do Sistema e Carta</button>
           <hr />
-          <button onclick="app.openReport('annual_costs')">Annual Component Costs (Pie Chart &amp; Table)</button>
-          <button onclick="app.openReport('monthly_energy')">Monthly Energy Use by Component</button>
-          <button onclick="app.openReport('billing_details')">Billing Details - Electric</button>
-          <button onclick="app.openReport('monthly_sim')">Monthly Simulation Results</button>
-          <button onclick="app.openReport('leed_summary')">ASHRAE 90.1 Appendix G / LEED v4 Summary</button>
-          <button onclick="app.openReport('input_data')">Input Data Reports (All Categories)</button>
+          <button onclick="app.openReport('annual_costs')" data-i18n="menu.reports.annual_costs">6. Custos Anuais por Componente (Gráfico e Tabela)</button>
+          <button onclick="app.openReport('monthly_energy')" data-i18n="menu.reports.monthly_energy">7. Consumo Mensal de Energia por Componente</button>
+          <button onclick="app.openReport('billing_details')" data-i18n="menu.reports.billing_details">8. Detalhes de Faturamento - Elétrico</button>
+          <button onclick="app.openReport('monthly_sim')" data-i18n="menu.reports.monthly_sim">9. Resultados da Simulação Mensal</button>
+          <button onclick="app.openReport('leed_summary')" data-i18n="menu.reports.leed_summary">10. Resumo ASHRAE 90.1 Apêndice G / LEED v4</button>
+          <button onclick="app.openReport('plant_report')" data-i18n="menu.reports.plant_report">11. Relatório de Centrais de Água Gelada / Caldeiras</button>
+          <button onclick="app.openReport('input_data')" data-i18n="menu.reports.input_data">12. Relatórios de Dados de Entrada (Todas as Categorias)</button>
           <hr />
-          <button onclick="window.location.href='/api/export/xlsx'">Export Workbook to Excel (.xlsx)</button>
-          <button onclick="window.location.href='/api/export/csv?type=monthly_simulation'">Export Monthly Simulation (.csv)</button>
-          <button onclick="window.location.href='/api/export/csv?type=zone_sizing'">Export Zone Sizing (.csv)</button>
+          <button onclick="window.location.href='/api/export/xlsx'" data-i18n="menu.reports.export_xlsx">Exportar Pasta de Trabalho para Excel (.xlsx)</button>
+          <button onclick="window.location.href='/api/export/csv?type=monthly_simulation'" data-i18n="menu.reports.export_sim_csv">Exportar Simulação Mensal (.csv)</button>
+          <button onclick="window.location.href='/api/export/csv?type=zone_sizing'" data-i18n="menu.reports.export_zone_csv">Exportar Dimensionamento de Zonas (.csv)</button>
         </div>
       </div>
 
       <div class="menu-item">
-        <span>Wizards</span>
+        <span data-i18n="menu.wizards">Assistentes</span>
         <div class="menu-dropdown">
-          <button onclick="app.openWizard('weather')">Weather Wizard (Global Station Search)...</button>
-          <button onclick="app.openWizard('building')">Building Footprint &amp; Space Wizard...</button>
-          <button onclick="app.openWizard('equipment')">HVAC Equipment &amp; Plant Wizard...</button>
-          <button onclick="app.openWizard('tariff')">Utility Rate Wizard (EIA / Brasil)...</button>
+          <button onclick="app.openWizard('weather')" data-i18n="menu.wizards.weather">Assistente de Clima (Busca Global de Estações)...</button>
+          <button onclick="app.openWizard('building')" data-i18n="menu.wizards.building">Assistente de Planta e Espaços do Edifício...</button>
+          <button onclick="app.openWizard('equipment')" data-i18n="menu.wizards.equipment">Assistente de Equipamentos HVAC e Centrais...</button>
+          <button onclick="app.openWizard('tariff')" data-i18n="menu.wizards.tariff">Assistente de Tarifas de Energia (EIA / Brasil)...</button>
         </div>
       </div>
 
       <div class="menu-item">
-        <span>Documentation</span>
+        <span data-i18n="menu.documentation">Documentação</span>
         <div class="menu-dropdown">
-          <button onclick="app.openReport('std183_doc')">Compliance with ANSI/ASHRAE/ACCA Standard 183</button>
-          <button onclick="app.openReport('leed_summary')">ASHRAE 90.1 Appendix G &amp; LEED v4 GHG Guide</button>
+          <button onclick="app.openReport('std183_doc')" data-i18n="menu.documentation.std183">Conformidade com ANSI/ASHRAE/ACCA Standard 183</button>
+          <button onclick="app.openReport('leed_summary')" data-i18n="menu.documentation.leed">Guia ASHRAE 90.1 Apêndice G e GEE do LEED v4</button>
+        </div>
+      </div>
+
+      <div class="menu-item">
+        <span data-i18n="menu.language">🌐 Idioma</span>
+        <div class="menu-dropdown">
+          <button onclick="I18N.setLanguage('pt-BR')">🇧🇷 Português (Brasil) — PT-BR</button>
+          <button onclick="I18N.setLanguage('en')">🇺🇸 English (United States) — EN</button>
+          <hr />
+          <button onclick="app.toggleUnitsSystem()">📐 Alternar Unidades (Métrico SI / Inglês IP)</button>
         </div>
       </div>
     </nav>
 
     <!-- Toolbar -->
     <div class="toolbar">
-      <button class="tool-btn" onclick="app.openFilePicker('.hap,.json')" title="Open .hap or .kapit project">
-        <span>📂 Open .hap</span>
+      <button class="tool-btn" onclick="app.openFilePicker('.hap,.json')" title="Abrir projeto .hap ou .kapit">
+        <span data-i18n="toolbar.open_hap">📂 Abrir .hap</span>
       </button>
-      <button class="tool-btn" onclick="window.location.href='/api/export/hap'" title="Save as Carrier HAP 6.4 .hap file">
-        <span>💾 Save .hap</span>
-      </button>
-      <span class="toolbar-sep"></span>
-      <button class="tool-btn primary" onclick="app.runCalculations()" title="Run 3-Step Heat Balance, Sizing & 8760-hr Energy Simulation">
-        <span>⚡ Calculate Design &amp; Energy</span>
-      </button>
-      <button class="tool-btn" onclick="app.switchWorkspaceTab('reports')" title="Open Report Viewer">
-        <span>📊 Reports Viewer</span>
-      </button>
-      <button class="tool-btn" onclick="app.switchWorkspaceTab('cad3d')" title="2D Floor Plan & 3D Extruded Building Model">
-        <span>🏢 2D / 3D Building</span>
-      </button>
-      <button class="tool-btn" onclick="app.switchWorkspaceTab('psych')" title="Interactive Psychrometric Chart">
-        <span>📈 Psychrometrics</span>
+      <button class="tool-btn" onclick="window.location.href='/api/export/hap'" title="Salvar como arquivo Carrier HAP 6.4 (.hap)">
+        <span data-i18n="toolbar.save_hap">💾 Salvar .hap</span>
       </button>
       <span class="toolbar-sep"></span>
-      <button class="tool-btn" onclick="app.openWizard('weather')"><span>🌍 Weather Wizard</span></button>
-      <button class="tool-btn" onclick="app.openWizard('building')"><span>📐 Building Wizard</span></button>
-      <button class="tool-btn" onclick="app.openWizard('equipment')"><span>❄️ Equipment Wizard</span></button>
-      <span class="toolbar-sep"></span>
-      <button class="tool-btn unit-toggle" id="btn-unit-toggle" onclick="app.toggleUnitsSystem()">
-        <span>Units: IP (English)</span>
+      <button class="tool-btn primary" onclick="app.runCalculations()" title="Executar Balanço Térmico, Dimensionamento e Simulação de 8.760 Horas">
+        <span data-i18n="toolbar.calc">⚡ Calcular Carga e Energia</span>
       </button>
-      <div class="inline-calc-box" title="UnitControls20 modCalc Inline Calculator (+, -, *, /, ^ or 3' 6&quot;)">
-        <input type="text" id="inline-calc-input" placeholder="Calc: e.g. 3' 6&quot; or 120*0.85" onkeydown="if(event.key==='Enter') app.evalInlineCalc()" />
+      <button class="tool-btn" onclick="app.switchWorkspaceTab('explorer')" title="Navegador do Projeto e Propriedades">
+        <span data-i18n="toolbar.explorer">📋 Propriedades</span>
+      </button>
+      <button class="tool-btn" onclick="app.switchWorkspaceTab('reports')" title="Abrir Visualizador de Relatórios">
+        <span data-i18n="toolbar.reports">📊 Relatórios</span>
+      </button>
+      <button class="tool-btn" onclick="app.switchWorkspaceTab('cad3d')" title="Planta Baixa 2D e Modelo Extrudado 3D">
+        <span data-i18n="toolbar.building_2d3d">🏢 Edifício 2D / 3D</span>
+      </button>
+      <button class="tool-btn" onclick="app.switchWorkspaceTab('psych')" title="Carta Psicrométrica Interativa">
+        <span data-i18n="toolbar.psych">📈 Psicrometria</span>
+      </button>
+      <span class="toolbar-sep"></span>
+      <button class="tool-btn" onclick="app.openWizard('weather')"><span data-i18n="toolbar.wiz_weather">🌍 Clima</span></button>
+      <button class="tool-btn" onclick="app.openWizard('building')"><span data-i18n="toolbar.wiz_building">📐 Edifício</span></button>
+      <button class="tool-btn" onclick="app.openWizard('equipment')"><span data-i18n="toolbar.wiz_equipment">❄️ Equipamentos</span></button>
+      <span class="toolbar-sep"></span>
+      <button class="tool-btn lang-toggle" id="btn-lang-toggle" onclick="app.toggleLanguage()" title="Alternar Idioma (PT-BR / EN)">
+        <span>🌐 PT-BR</span>
+      </button>
+      <button class="tool-btn unit-toggle" id="btn-unit-toggle" onclick="app.toggleUnitsSystem()" title="Alternar Unidades (Métrico SI / Inglês IP)">
+        <span data-i18n="toolbar.units_si">📐 Unidades: SI (Métrico)</span>
+      </button>
+      <div class="inline-calc-box" title="Calculadora em Linha (modCalc UnitControls20: +, -, *, /, ^ ou 3' 6&quot;)">
+        <input type="text" id="inline-calc-input" data-i18n="toolbar.calc_placeholder" placeholder="Calc: ex: 3' 6&quot; ou 120*0.85 ou 15.5+4" onkeydown="if(event.key==='Enter') app.evalInlineCalc()" />
         <button onclick="app.evalInlineCalc()">=</button>
         <span id="inline-calc-result"></span>
       </div>
@@ -145,35 +162,35 @@
   <main class="main-workspace">
     <!-- Left Pane: HAP 6.4 Project TreeView -->
     <aside class="tree-pane">
-      <div class="pane-header">Project Navigation Tree</div>
+      <div class="pane-header" id="pane-header-title">Navegação do Projeto</div>
       <div class="tree-container" id="project-tree"></div>
 
       <!-- Quick KPI Summary Card at bottom of Left Pane -->
       <div class="kpi-summary-card" id="sidebar-kpi-card">
-        <div class="kpi-title">Live System Summary</div>
-        <div class="kpi-row"><span>Peak Cooling:</span> <strong id="kpi-tons">28.9 Tons (346.5 MBH)</strong></div>
-        <div class="kpi-row"><span>Supply Design:</span> <strong id="kpi-cfm">6,336 CFM</strong></div>
-        <div class="kpi-row"><span>Outdoor Air (62.1):</span> <strong id="kpi-oa">3,878 CFM</strong></div>
-        <div class="kpi-row"><span>Preheat / Reheat:</span> <strong id="kpi-heat">198.1 / 128.7 MBH</strong></div>
-        <div class="kpi-row"><span>Annual Energy:</span> <strong id="kpi-kwh">145,595 kWh/yr</strong></div>
-        <div class="kpi-row"><span>Annual Cost:</span> <strong id="kpi-cost">$18,112 / yr</strong></div>
+        <div class="kpi-title" data-i18n="kpi.title">Resumo de Carga Térmica (ASHRAE 183)</div>
+        <div class="kpi-row"><span data-i18n="kpi.cooling">Resfriamento de Pico:</span> <strong id="kpi-tons">28.9 TR (101.6 kW)</strong></div>
+        <div class="kpi-row"><span data-i18n="kpi.supply">Insuflamento de Projeto:</span> <strong id="kpi-cfm">2,990 L/s</strong></div>
+        <div class="kpi-row"><span data-i18n="kpi.oa">Ar Externo (62.1):</span> <strong id="kpi-oa">1,830 L/s</strong></div>
+        <div class="kpi-row"><span data-i18n="kpi.heat">Pré-aquec. Serpentina:</span> <strong id="kpi-heat">58.1 kW</strong></div>
+        <div class="kpi-row"><span data-i18n="kpi.shr">Fator Calor Sensível (SHR):</span> <strong id="kpi-shr">0.76</strong></div>
+        <div class="kpi-row"><span data-i18n="kpi.density">Densidade Térmica:</span> <strong id="kpi-density">94.5 W/m²</strong></div>
       </div>
     </aside>
 
     <!-- Right Pane: Tabbed Workspace (Explorer/Editors | 2D/3D Building | Psychrometrics | Report Viewer) -->
     <section class="content-pane">
       <div class="workspace-tabs">
-        <button class="ws-tab active" data-tab="explorer" onclick="app.switchWorkspaceTab('explorer')">
-          📋 Category List &amp; Property Editor
+        <button class="ws-tab active" data-tab="explorer" onclick="app.switchWorkspaceTab('explorer')" data-i18n="tab.explorer">
+          📋 Lista de Categorias e Editor de Propriedades
         </button>
-        <button class="ws-tab" data-tab="cad3d" onclick="app.switchWorkspaceTab('cad3d')">
-          🏢 2D Floor Plan &amp; 3D Extruded Model
+        <button class="ws-tab" data-tab="cad3d" onclick="app.switchWorkspaceTab('cad3d')" data-i18n="tab.cad3d">
+          🏢 Planta Baixa 2D e Modelo Extrudado 3D
         </button>
-        <button class="ws-tab" data-tab="psych" onclick="app.switchWorkspaceTab('psych')">
-          🌡️ System Psychrometric Chart &amp; Calculator
+        <button class="ws-tab" data-tab="psych" onclick="app.switchWorkspaceTab('psych')" data-i18n="tab.psych">
+          🌡️ Carta Psicrométrica e Calculadora de Estados
         </button>
-        <button class="ws-tab" data-tab="reports" onclick="app.switchWorkspaceTab('reports')">
-          📄 Design Load &amp; Energy Reports (HAP 6.4 Format)
+        <button class="ws-tab" data-tab="reports" onclick="app.switchWorkspaceTab('reports')" data-i18n="tab.reports">
+          📄 Relatórios de Carga Térmica e Energia (Formato HAP 6.4)
         </button>
       </div>
 
@@ -181,12 +198,12 @@
       <div class="ws-panel active" id="panel-explorer">
         <div class="entity-list-section">
           <div class="section-bar">
-            <span id="current-category-title">Weather Properties</span>
+            <span id="current-category-title">Propriedades do Clima</span>
             <div class="section-actions">
-              <button class="btn-sm" onclick="app.createNewEntityInCurrentCategory()">+ Create New (Ins)</button>
-              <button class="btn-sm" onclick="app.duplicateSelectedEntity()">📋 Duplicate (Ctrl+D)</button>
-              <button class="btn-sm danger" onclick="app.deleteSelectedEntity()">🗑️ Delete (Del)</button>
-              <button class="btn-sm primary" onclick="app.saveAndCalculate()">Apply &amp; Recalculate</button>
+              <button class="btn-sm" onclick="app.createNewEntityInCurrentCategory()" data-i18n="actions.new">+ Criar Novo (Ins)</button>
+              <button class="btn-sm" onclick="app.duplicateSelectedEntity()" data-i18n="actions.duplicate">📋 Duplicar (Ctrl+D)</button>
+              <button class="btn-sm danger" onclick="app.deleteSelectedEntity()" data-i18n="actions.delete">🗑️ Excluir (Del)</button>
+              <button class="btn-sm primary" onclick="app.saveAndCalculate()" data-i18n="actions.apply_calc">Aplicar e Recalcular</button>
             </div>
           </div>
           <div class="entity-table-wrap" id="entity-list-container"></div>
@@ -199,40 +216,42 @@
       <div class="ws-panel" id="panel-cad3d">
         <div class="cad-toolbar">
           <div class="cad-tools-row">
-            <label>Level:
+            <label><span data-i18n="cad.level">Pavimento:</span>
               <select id="cad-level-select" onchange="modeler.activeLevel=this.value; modeler.render()">
-                <option value="Level 1">Level 1 (0 ft)</option>
-                <option value="Level 2">Level 2 (12 ft)</option>
+                <option value="Level 1" data-i18n="cad.level_opt_1">Nível 1 (0 m)</option>
+                <option value="Level 2" data-i18n="cad.level_opt_2">Nível 2 (3.6 m)</option>
               </select>
             </label>
             <span class="toolbar-sep"></span>
-            <button class="btn-sm" id="btn-cad-select" onclick="modeler.currentTool='select'; modeler.render()">👆 Select / Move</button>
-            <button class="btn-sm" id="btn-cad-rect" onclick="modeler.currentTool='draw_rect'">📐 Draw Room (Drag)</button>
-            <button class="btn-sm" onclick="modeler.splitSelectedPerimeterCore(15)">✂️ Split Perim/Core (15 ft)</button>
-            <button class="btn-sm" onclick="modeler.addWindowToSelectedWall()">🪟 + Window</button>
-            <button class="btn-sm" onclick="modeler.addDoorToSelectedWall()">🚪 + Door</button>
-            <button class="btn-sm danger" onclick="modeler.deleteSelectedRoom()">🗑️ Delete Room</button>
+            <button class="btn-sm" id="btn-cad-select" onclick="modeler.currentTool='select'; modeler.render()" data-i18n="cad.tool_select">👆 Selecionar / Mover</button>
+            <button class="btn-sm" id="btn-cad-rect" onclick="modeler.currentTool='draw_rect'" data-i18n="cad.tool_draw_rect">📐 Desenhar Ambiente (Arrastar)</button>
+            <button class="btn-sm" id="btn-cad-dim" onclick="modeler.openCreateRoomByDimensionsModal()" data-i18n="cad.tool_enter_dim">⌨️ Inserir por Medidas (LxC)</button>
+            <button class="btn-sm" id="btn-cad-split" onclick="modeler.splitSelectedPerimeterCore(15)" data-i18n="cad.tool_split_perim">✂️ Dividir Perímetro/Núcleo</button>
+            <button class="btn-sm" onclick="modeler.addWindowToSelectedWall()" data-i18n="cad.tool_add_window">🪟 + Janela</button>
+            <button class="btn-sm" onclick="modeler.addDoorToSelectedWall()" data-i18n="cad.tool_add_door">🚪 + Porta</button>
+            <button class="btn-sm danger" onclick="modeler.deleteSelectedRoom()" data-i18n="cad.tool_delete_room">🗑️ Excluir Ambiente</button>
           </div>
           <div class="cad-controls">
-            <label>View Mode:
+            <label><span data-i18n="cad.view_mode">Modo de Visualização:</span>
               <select id="cad-view-mode" onchange="modeler.viewMode=this.value; modeler.render()">
-                <option value="split">Split 2D Floor Plan + 3D Extruded</option>
-                <option value="2d">2D Architectural Floor Plan</option>
-                <option value="3d">3D Isometric Extruded Model</option>
+                <option value="split" data-i18n="cad.view_split">Dividido: Planta 2D + Isométrica 3D</option>
+                <option value="2d" data-i18n="cad.view_2d">Planta Baixa Arquitetônica 2D</option>
+                <option value="3d" data-i18n="cad.view_3d">Modelo Isométrico 3D Extrudado</option>
               </select>
             </label>
-            <label>Color By:
+            <label><span data-i18n="cad.color_by">Colorir Por:</span>
               <select id="cad-color-mode" onchange="modeler.colorMode=this.value; modeler.render()">
-                <option value="zone">HVAC Thermal Zone</option>
-                <option value="load">Peak Cooling Intensity (BTU/hr·sqft)</option>
-                <option value="usage">ASHRAE 62.1 Space Usage</option>
+                <option value="zone" data-i18n="cad.color_zone">Zona Térmica HVAC</option>
+                <option value="load" data-i18n="cad.color_load">Intensidade de Carga Térmica</option>
+                <option value="usage" data-i18n="cad.color_usage">Uso do Espaço ASHRAE 62.1</option>
               </select>
             </label>
-            <button class="btn-sm" onclick="modeler.rot3d.az=(modeler.rot3d.az+45)%360; modeler.render()">🔄 Rotate 3D</button>
+            <button class="btn-sm" onclick="modeler.resetView()" title="Ajustar todo o edifício à tela" data-i18n="cad.fit_view">🔍 Ajustar Vista</button>
+            <button class="btn-sm" onclick="modeler.rot3d.az=(modeler.rot3d.az+45)%360; modeler.render()" data-i18n="cad.rotate_3d">🔄 Girar 3D</button>
           </div>
         </div>
-        <div class="cad-selection-bar" id="cad-selection-info">
-          Click a room to select or drag to move. Use 'Draw Room' to sketch new spaces.
+        <div class="cad-selection-bar" id="cad-selection-info" data-i18n="cad.selection_hint">
+          Clique em um ambiente para selecionar ou arraste para mover. Use 'Desenhar Ambiente' para criar novos espaços.
         </div>
         <div class="cad-canvas-wrapper">
           <canvas id="building-canvas" width="1120" height="500"></canvas>
@@ -245,22 +264,22 @@
         <div class="psych-layout">
           <div class="psych-chart-box">
             <div class="section-bar">
-              <span>ASHRAE Sea-Level / Altitude-Corrected Psychrometric Chart — VAV - Wing D Peak Cooling (August 16:00)</span>
-              <span id="psych-elev-badge">Elevation: 790.0 ft (14.281 psia)</span>
+              <span id="psych-title-span" data-i18n="psych.title">Carta Psicrométrica ASHRAE Corrigida por Altitude</span>
+              <span id="psych-elev-badge">Elevação: 240.8 m (98.4 kPa)</span>
             </div>
             <canvas id="psych-canvas" width="780" height="490"></canvas>
           </div>
           <div class="psych-side-box">
-            <div class="section-bar"><span>Interactive State Point Calculator</span></div>
+            <div class="section-bar"><span data-i18n="psych.state_calc">Calculadora Interativa de Pontos de Estado</span></div>
             <div class="form-grid compact">
-              <label>Airflow (CFM): <input type="number" id="ps-cfm" value="6107" /></label>
-              <label>Dry-Bulb (°F): <input type="number" id="ps-db" value="85.3" step="0.1" /></label>
-              <label>Wet-Bulb (°F): <input type="number" id="ps-wb" value="71.2" step="0.1" /></label>
-              <button class="btn-sm primary" onclick="app.calcCustomPsychPoint()">Compute Psychrometric State</button>
+              <label><span id="ps-cfm-label">Vazão de Ar (CFM / L/s):</span> <input type="number" id="ps-cfm" value="6107" /></label>
+              <label><span id="ps-db-label">Bulbo Seco (°F / °C):</span> <input type="number" id="ps-db" value="85.3" step="0.1" /></label>
+              <label><span id="ps-wb-label">Bulbo Úmido (°F / °C):</span> <input type="number" id="ps-wb" value="71.2" step="0.1" /></label>
+              <button class="btn-sm primary" onclick="app.calcCustomPsychPoint()" data-i18n="psych.calc_btn">Calcular Estado Psicrométrico</button>
             </div>
             <div id="custom-psych-output" class="psych-card"></div>
 
-            <div class="section-bar" style="margin-top:10px"><span>System Cycle State Points (Aug 16:00)</span></div>
+            <div class="section-bar" style="margin-top:10px"><span data-i18n="psych.cycle_title">Pontos de Estado do Ciclo do Sistema de Ar</span></div>
             <div id="system-psych-table-wrap"></div>
           </div>
         </div>
@@ -270,34 +289,34 @@
       <div class="ws-panel" id="panel-reports">
         <div class="report-toolbar">
           <div class="report-selector-group">
-            <label>Select Report:
+            <label><span data-i18n="rpt.select_label">Selecionar Relatório:</span>
               <select id="report-type-select" onchange="reportsUI.renderSelectedReport()">
-                <optgroup label="Design Load Reports (ASHRAE Std 183)">
-                  <option value="sizing_summary">1. Air System Sizing Summary (VAV - Wing D)</option>
-                  <option value="zone_sizing">2. Zone Sizing Summary (Terminals, Peak Loads, Spaces)</option>
-                  <option value="ventilation">3. Ventilation Sizing Summary (ASHRAE Standard 62.1-2022)</option>
-                  <option value="heat_balance">4. Air System &amp; Zone Heat Balance Summary</option>
-                  <option value="psychrometrics">5. System Psychrometrics Analysis</option>
+                <optgroup label="Relatórios de Carga Térmica de Projeto (ASHRAE Std 183)">
+                  <option value="sizing_summary">1. Resumo de Dimensionamento do Sistema de Ar (VAV - Wing D)</option>
+                  <option value="zone_sizing">2. Resumo de Dimensionamento das Zonas (Terminais, Cargas, Espaços)</option>
+                  <option value="ventilation">3. Resumo de Ventilação e Ar Externo (ASHRAE Standard 62.1-2022)</option>
+                  <option value="heat_balance">4. Balanço Térmico do Sistema de Ar e Zonas</option>
+                  <option value="psychrometrics">5. Análise Psicrométrica do Sistema</option>
                 </optgroup>
-                <optgroup label="Energy Modeling Reports (8,760 Hours)">
-                  <option value="annual_costs">6. Annual Component Costs (Pie Chart &amp; Table)</option>
-                  <option value="monthly_energy">7. Monthly Energy Use by System Component</option>
-                  <option value="billing_details">8. Billing Details - Electric (6 Tables)</option>
-                  <option value="monthly_sim">9. Monthly Simulation Results (Loads &amp; Inputs)</option>
-                  <option value="leed_summary">10. ASHRAE 90.1 Appendix G / LEED v4 Summary (4 Rotations &amp; GHG)</option>
+                <optgroup label="Relatórios de Simulação Energética Anual (8.760 Horas)">
+                  <option value="annual_costs">6. Custos Anuais por Componente (Gráfico de Pizza e Tabela)</option>
+                  <option value="monthly_energy">7. Consumo Mensal de Energia por Componente</option>
+                  <option value="billing_details">8. Detalhes de Faturamento - Elétrico (6 Tabelas)</option>
+                  <option value="monthly_sim">9. Resultados da Simulação Mensal (Cargas e Consumos)</option>
+                  <option value="leed_summary">10. Resumo ASHRAE 90.1 Apêndice G / LEED v4 (4 Rotações e GEE)</option>
                 </optgroup>
-                <optgroup label="Plant &amp; Input Data Reports">
-                  <option value="plant_report">11. Chiller, Merkel Tower &amp; Condensing Boiler Plant Report</option>
-                  <option value="input_data">12. Complete Project Input Data Reports (Weather, Building, Spaces, Assemblies)</option>
-                  <option value="std183_doc">13. ANSI/ASHRAE/ACCA Standard 183-2024 Compliance Matrix</option>
+                <optgroup label="Relatórios de Centrais Térmicas e Dados de Entrada">
+                  <option value="plant_report">11. Relatório de Chiller, Torre de Resfriamento Merkel e Caldeira</option>
+                  <option value="input_data">12. Relatórios Completos de Dados de Entrada (Clima, Espaços, Paredes)</option>
+                  <option value="std183_doc">13. Matriz de Conformidade ANSI/ASHRAE/ACCA Standard 183-2024</option>
                 </optgroup>
               </select>
             </label>
           </div>
           <div class="report-actions">
-            <button class="btn-sm" onclick="window.print()">🖨️ Print / Save PDF</button>
-            <button class="btn-sm" onclick="window.location.href='/api/export/xlsx'">📗 Export Excel (.xlsx)</button>
-            <button class="btn-sm" onclick="window.location.href='/api/export/csv?type=monthly_simulation'">📄 Export CSV (.csv)</button>
+            <button class="btn-sm" onclick="window.print()" data-i18n="rpt.btn_print">🖨️ Imprimir / Salvar PDF</button>
+            <button class="btn-sm" onclick="window.location.href='/api/export/xlsx'" data-i18n="rpt.btn_xlsx">📗 Exportar Excel (.xlsx)</button>
+            <button class="btn-sm" onclick="window.location.href='/api/export/csv?type=monthly_simulation'" data-i18n="rpt.btn_csv">📄 Exportar CSV (.csv)</button>
           </div>
         </div>
 
@@ -308,17 +327,20 @@
 
   <!-- Status Bar (frmMain 4-Panel Status Bar) -->
   <footer class="status-bar">
-    <div class="status-panel" id="status-vent">Ventilation Standard: ASHRAE Standard 62.1-2022</div>
-    <div class="status-panel" id="status-energy">Energy Standard: ASHRAE Standard 90.1-2022</div>
-    <div class="status-panel" id="status-units">Units: English (IP)</div>
-    <div class="status-panel" id="status-msg">Ready — Project Calculated (0 Validation Errors)</div>
+    <div class="status-panel" id="status-vent">Norma de Ventilação: ASHRAE Standard 62.1-2022</div>
+    <div class="status-panel" id="status-energy">Norma de Energia: ASHRAE Standard 90.1-2022</div>
+    <div class="status-panel" id="status-units">Unidades: Métrico (SI)</div>
+    <div class="status-panel" id="status-msg">Pronto — Projeto Calculado (0 Erros de Validação)</div>
   </footer>
+
+  <!-- CAD 2D/3D Floor Plan Context Menu -->
+  <div id="cad-context-menu" class="cad-context-menu" style="display:none"></div>
 
   <!-- Modal Container for Wizards & Preferences -->
   <div class="modal-backdrop" id="modal-backdrop" style="display:none">
     <div class="modal-window" id="modal-window">
       <div class="modal-header">
-        <span id="modal-title">Wizard</span>
+        <span id="modal-title">Assistente</span>
         <button class="modal-close" onclick="app.closeModal()">✕</button>
       </div>
       <div class="modal-body" id="modal-body"></div>
@@ -326,6 +348,7 @@
     </div>
   </div>
 
+  <script src="i18n.js"></script>
   <script src="templates.js"></script>
   <script src="modeler.js"></script>
   <script src="reports_ui.js"></script>

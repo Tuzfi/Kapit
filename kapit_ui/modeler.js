@@ -54,11 +54,127 @@ const modeler = {
     { code: "Underground", label: "Underground / Below Grade (Enterrada)" },
   ],
 
+  autoPropagateOrientations: true,
+
+  COMPASS_AZIMUTHS: {
+    "N": 0,
+    "NNE": 22.5,
+    "NE": 45,
+    "ENE": 67.5,
+    "E": 90,
+    "ESE": 112.5,
+    "SE": 135,
+    "SSE": 157.5,
+    "S": 180,
+    "SSW": 202.5,
+    "SW": 225,
+    "WSW": 247.5,
+    "W": 270,
+    "WNW": 292.5,
+    "NW": 315,
+    "NNW": 337.5
+  },
+
+  compassToAzimuth(cardinal) {
+    if (!cardinal) return null;
+    if (this.COMPASS_AZIMUTHS && this.COMPASS_AZIMUTHS[cardinal] !== undefined) {
+      return this.COMPASS_AZIMUTHS[cardinal];
+    }
+    return null;
+  },
+
+  azimuthToCompass(azimuth) {
+    let az = ((azimuth % 360) + 360) % 360;
+    const cardinals = [
+      { code: "N", az: 0 },
+      { code: "NNE", az: 22.5 },
+      { code: "NE", az: 45 },
+      { code: "ENE", az: 67.5 },
+      { code: "E", az: 90 },
+      { code: "ESE", az: 112.5 },
+      { code: "SE", az: 135 },
+      { code: "SSE", az: 157.5 },
+      { code: "S", az: 180 },
+      { code: "SSW", az: 202.5 },
+      { code: "SW", az: 225 },
+      { code: "WSW", az: 247.5 },
+      { code: "W", az: 270 },
+      { code: "WNW", az: 292.5 },
+      { code: "NW", az: 315 },
+      { code: "NNW", az: 337.5 },
+      { code: "N", az: 360 }
+    ];
+    let best = cardinals[0];
+    let minDiff = 999;
+    for (const c of cardinals) {
+      const diff = Math.abs(az - c.az);
+      if (diff < minDiff) {
+        minDiff = diff;
+        best = c;
+      }
+    }
+    return best.code;
+  },
+
+  getWallGeometricAngle(sp, wIdx) {
+    if (sp && sp.geometry && sp.geometry.polygon && sp.geometry.polygon.length >= 3) {
+      const pts = sp.geometry.polygon;
+      const p1 = pts[wIdx % pts.length];
+      const p2 = pts[(wIdx + 1) % pts.length];
+      const norm = this.getEdgeOutwardNormal(p1, p2, pts);
+      let azDeg = Math.atan2(norm.nx, -norm.ny) * (180.0 / Math.PI);
+      if (azDeg < 0) azDeg += 360.0;
+      return Math.round(azDeg * 10) / 10;
+    }
+    const totalWalls = (sp && sp.walls && sp.walls.length) || 4;
+    return (wIdx * (360.0 / totalWalls)) % 360.0;
+  },
+
+  getPeakSolarFlux(orientation) {
+    const isSI = typeof I18N !== "undefined" && I18N.isSI();
+    const fluxMap = {
+      "N": 39.0,
+      "NNE": 85.0,
+      "NE": 165.0,
+      "ENE": 205.0,
+      "E": 216.0,
+      "ESE": 195.0,
+      "SE": 168.0,
+      "SSE": 135.0,
+      "S": 109.0,
+      "SSW": 135.0,
+      "SW": 168.0,
+      "WSW": 195.0,
+      "W": 216.0,
+      "WNW": 205.0,
+      "NW": 165.0,
+      "NNW": 85.0,
+      "Horizontal": 285.0,
+      "Partition": 0.0,
+      "Underground": 0.0
+    };
+    const btu = fluxMap[orientation] || 0.0;
+    if (isSI) {
+      const wm2 = Math.round(btu * 3.15459);
+      return `${wm2} W/m²`;
+    }
+    return `${btu} BTU/(hr·ft²)`;
+  },
+
   init() {
     const cvs = document.getElementById("building-canvas");
     if (!cvs) return;
     this.attachEventListeners(cvs);
     this.ensureGeometries();
+    this.render();
+  },
+
+  resetView() {
+    this.pan2d = { x: 40, y: 40 };
+    this.zoom2d = 1.25;
+    this.pan3d = { x: 0, y: 0 };
+    this.zoom3d = 1.0;
+    this.rot3d = { az: 38, el: 35 };
     this.render();
   },
 
@@ -146,20 +262,45 @@ const modeler = {
   },
 
   polygonArea(pts) {
+    return Math.abs(this.getSignedPolygonArea(pts));
+  },
+
+  getSignedPolygonArea(pts) {
     let area = 0.0;
     for (let i = 0; i < pts.length; i++) {
       const j = (i + 1) % pts.length;
-      area += pts[i][0] * pts[j][1];
-      area -= pts[j][0] * pts[i][1];
+      area += pts[i][0] * pts[j][1] - pts[j][0] * pts[i][1];
     }
-    return Math.abs(area) / 2.0;
+    return area / 2.0;
   },
 
-  edgeOrientation(p1, p2) {
+  getEdgeOutwardNormal(p1, p2, polyPts) {
     const dx = p2[0] - p1[0];
     const dy = p2[1] - p1[1];
-    let angleDeg = Math.atan2(dx, -dy) * (180.0 / Math.PI);
-    if (angleDeg < 0) angleDeg += 360.0;
+    const len = Math.hypot(dx, dy);
+    if (len === 0) return { nx: 0, ny: -1, len: 0, dx: 0, dy: 0 };
+    // In canvas / model space (y increases downwards):
+    // If polygon is Clockwise (signedArea > 0), outward normal is (dy/len, -dx/len)
+    // If polygon is Counter-Clockwise (signedArea < 0), outward normal is (-dy/len, dx/len)
+    const isCW = this.getSignedPolygonArea(polyPts) >= 0;
+    const sign = isCW ? 1.0 : -1.0;
+    return {
+      nx: (dy / len) * sign,
+      ny: (-dx / len) * sign,
+      len: len,
+      dx: dx,
+      dy: dy,
+    };
+  },
+
+  normalToCompass(nx, ny) {
+    // Standard architectural compass where North is up (-Y):
+    // North (N): nx = 0, ny = -1 -> Azimuth 0°
+    // East  (E): nx = 1, ny = 0  -> Azimuth 90°
+    // South (S): nx = 0, ny = 1  -> Azimuth 180°
+    // West  (W): nx = -1, ny = 0 -> Azimuth 270°
+    let azDeg = Math.atan2(nx, -ny) * (180.0 / Math.PI);
+    if (azDeg < 0) azDeg += 360.0;
 
     const compass = [
       { code: "N", min: 348.75, max: 11.25 },
@@ -181,8 +322,8 @@ const modeler = {
     ];
     for (const c of compass) {
       if (c.code === "N") {
-        if (angleDeg >= c.min || angleDeg < c.max) return "N";
-      } else if (angleDeg >= c.min && angleDeg < c.max) {
+        if (azDeg >= c.min || azDeg < c.max) return "N";
+      } else if (azDeg >= c.min && azDeg < c.max) {
         return c.code;
       }
     }
@@ -199,6 +340,29 @@ const modeler = {
     const projX = x1 + t * dx;
     const projY = y1 + t * dy;
     return Math.hypot(px - projX, py - projY);
+  },
+
+  segmentsOverlapCollinear(p1, p2, op1, op2, tolerance = 1.5) {
+    const d1 = this.distToSegment(op1[0], op1[1], p1[0], p1[1], p2[0], p2[1]);
+    const d2 = this.distToSegment(op2[0], op2[1], p1[0], p1[1], p2[0], p2[1]);
+    const d3 = this.distToSegment(p1[0], p1[1], op1[0], op1[1], op2[0], op2[1]);
+    const d4 = this.distToSegment(p2[0], p2[1], op1[0], op1[1], op2[0], op2[1]);
+
+    if ((d1 < tolerance && d2 < tolerance) || (d3 < tolerance && d4 < tolerance)) {
+      const dx = p2[0] - p1[0];
+      const dy = p2[1] - p1[1];
+      const len2 = dx * dx + dy * dy;
+      if (len2 < 1.0) return false;
+      const to1 = ((op1[0] - p1[0]) * dx + (op1[1] - p1[1]) * dy) / len2;
+      const to2 = ((op2[0] - p1[0]) * dx + (op2[1] - p1[1]) * dy) / len2;
+      const minO = Math.min(to1, to2);
+      const maxO = Math.max(to1, to2);
+      const overlapStart = Math.max(0.0, minO);
+      const overlapEnd = Math.min(1.0, maxO);
+      const overlapLen = (overlapEnd - overlapStart) * Math.sqrt(len2);
+      return overlapLen > 2.0;
+    }
+    return false;
   },
 
   syncSpaceFromGeometry(sp) {
@@ -224,7 +388,8 @@ const modeler = {
       const p1 = pts[i];
       const p2 = pts[(i + 1) % pts.length];
       const len = Math.hypot(p2[0] - p1[0], p2[1] - p1[1]);
-      const defaultOri = this.edgeOrientation(p1, p2);
+      const norm = this.getEdgeOutwardNormal(p1, p2, pts);
+      const defaultOri = this.normalToCompass(norm.nx, norm.ny);
       const grossArea = Math.round(len * flr_to_flr * 10) / 10;
 
       let isShared = false;
@@ -234,8 +399,7 @@ const modeler = {
         for (let j = 0; j < oPts.length; j++) {
           const op1 = oPts[j];
           const op2 = oPts[(j + 1) % oPts.length];
-          if ((Math.hypot(p1[0] - op2[0], p1[1] - op2[1]) < 1.0 && Math.hypot(p2[0] - op1[0], p2[1] - op1[1]) < 1.0) ||
-              (Math.hypot(p1[0] - op1[0], p1[1] - op1[1]) < 1.0 && Math.hypot(p2[0] - op2[0], p2[1] - op2[1]) < 1.0)) {
+          if (this.segmentsOverlapCollinear(p1, p2, op1, op2)) {
             isShared = true;
             break;
           }
@@ -382,7 +546,8 @@ const modeler = {
       ctx.textAlign = "center";
       ctx.fillText(sp.name.split(" - ")[0], midX, midY - 2);
       ctx.font = "9.5px Segoe UI";
-      ctx.fillText(`${sp.floor_area_sqft} sqft`, midX, midY + 11);
+      const areaText = typeof I18N !== "undefined" ? I18N.formatArea(sp.floor_area_sqft, 0) : `${sp.floor_area_sqft} sqft`;
+      ctx.fillText(areaText, midX, midY + 11);
 
       // Render Walls, Orientations, Windows & Doors
       for (let i = 0; i < pts.length; i++) {
@@ -401,48 +566,76 @@ const modeler = {
           ctx.lineWidth = 4.5;
           ctx.stroke();
 
-          // Draw outward normal arrow and orientation label
+          // Draw outward normal arrow and orientation label using exact polygon outward normal
           const midEdgeX = (p1.px + p2.px) / 2;
           const midEdgeY = (p1.py + p2.py) / 2;
-          const dx = p2.px - p1.px;
-          const dy = p2.py - p1.py;
-          const edgeLen = Math.hypot(dx, dy);
-          if (edgeLen > 0) {
-            const nx = -dy / edgeLen;
-            const ny = dx / edgeLen;
-            const arrowLen = 22;
-            const ax = midEdgeX + nx * arrowLen;
-            const ay = midEdgeY + ny * arrowLen;
+          const polyScreen = pts.map(p => [p.px, p.py]);
+          const norm = this.getEdgeOutwardNormal([p1.px, p1.py], [p2.px, p2.py], polyScreen);
+          const nx = norm.nx;
+          const ny = norm.ny;
+          const arrowLen = 24;
+          const ax = midEdgeX + nx * arrowLen;
+          const ay = midEdgeY + ny * arrowLen;
 
-            ctx.strokeStyle = "#b45309";
-            ctx.fillStyle = "#b45309";
-            ctx.lineWidth = 2.2;
-            ctx.beginPath();
-            ctx.moveTo(midEdgeX, midEdgeY);
-            ctx.lineTo(ax, ay);
-            ctx.stroke();
+          ctx.strokeStyle = "#b45309";
+          ctx.fillStyle = "#b45309";
+          ctx.lineWidth = 2.4;
+          ctx.beginPath();
+          ctx.moveTo(midEdgeX, midEdgeY);
+          ctx.lineTo(ax, ay);
+          ctx.stroke();
 
-            // Arrow head
-            const angle = Math.atan2(ny, nx);
-            ctx.beginPath();
-            ctx.moveTo(ax, ay);
-            ctx.lineTo(ax - 7 * Math.cos(angle - Math.PI / 6), ay - 7 * Math.sin(angle - Math.PI / 6));
-            ctx.lineTo(ax - 7 * Math.cos(angle + Math.PI / 6), ay - 7 * Math.sin(angle + Math.PI / 6));
-            ctx.closePath();
-            ctx.fill();
+          // Arrow head
+          const angle = Math.atan2(ny, nx);
+          ctx.beginPath();
+          ctx.moveTo(ax, ay);
+          ctx.lineTo(ax - 7 * Math.cos(angle - Math.PI / 6), ay - 7 * Math.sin(angle - Math.PI / 6));
+          ctx.lineTo(ax - 7 * Math.cos(angle + Math.PI / 6), ay - 7 * Math.sin(angle + Math.PI / 6));
+          ctx.closePath();
+          ctx.fill();
 
-            const oriLabel = wall ? wall.orientation : "Exp";
-            ctx.fillStyle = "#78350f";
-            ctx.font = "bold 10px Segoe UI";
-            ctx.textAlign = "center";
-            ctx.fillText(`${oriLabel} (${wall ? wall.length_ft : 0}')`, ax + nx * 14, ay + ny * 14);
+          let oriLabel = wall ? wall.orientation : "Exp";
+          if (typeof I18N !== "undefined" && wall) {
+            oriLabel = I18N.t("compass." + wall.orientation).split(" (")[0] || wall.orientation;
           }
+          const lenText = typeof I18N !== "undefined" ? I18N.formatLength(wall ? wall.length_ft : 0, 1) : `${wall ? wall.length_ft : 0}'`;
+          ctx.fillStyle = "#78350f";
+          ctx.font = "bold 10px Segoe UI";
+          ctx.textAlign = "center";
+          ctx.fillText(`${oriLabel} (${lenText})`, ax + nx * 14, ay + ny * 14);
         } else if (isWallHovered) {
           ctx.strokeStyle = "#0284c7";
           ctx.lineWidth = 3.0;
           ctx.setLineDash([4, 4]);
           ctx.stroke();
           ctx.setLineDash([]);
+        }
+
+        // Draw compass orientation badge on all walls when room is selected
+        if (isSelected && !isWallSelected && wall) {
+          const midEdgeX = (p1.px + p2.px) / 2;
+          const midEdgeY = (p1.py + p2.py) / 2;
+          const polyScreen = pts.map(p => [p.px, p.py]);
+          const norm = this.getEdgeOutwardNormal([p1.px, p1.py], [p2.px, p2.py], polyScreen);
+          const nx = norm.nx;
+          const ny = norm.ny;
+          const badgeX = midEdgeX + nx * 14;
+          const badgeY = midEdgeY + ny * 14;
+
+          const az = this.compassToAzimuth(wall.orientation);
+          const badgeText = az !== null ? `P${i + 1}: ${wall.orientation} (${az}°)` : `P${i + 1}: ${wall.orientation}`;
+
+          ctx.font = "bold 9px Segoe UI";
+          const tw = ctx.measureText(badgeText).width;
+          ctx.fillStyle = "rgba(255, 255, 255, 0.9)";
+          ctx.strokeStyle = "#94a3b8";
+          ctx.lineWidth = 1;
+          ctx.fillRect(badgeX - tw / 2 - 4, badgeY - 7, tw + 8, 14);
+          ctx.strokeRect(badgeX - tw / 2 - 4, badgeY - 7, tw + 8, 14);
+
+          ctx.fillStyle = "#1e293b";
+          ctx.textAlign = "center";
+          ctx.fillText(badgeText, badgeX, badgeY + 3.5);
         }
 
         // Draw Windows on wall edge
@@ -456,8 +649,10 @@ const modeler = {
           if (edgeLen > 0) {
             const ux = dx / edgeLen;
             const uy = dy / edgeLen;
-            const nx = -uy;
-            const ny = ux;
+            const polyScreen = pts.map(p => [p.px, p.py]);
+            const norm = this.getEdgeOutwardNormal([p1.px, p1.py], [p2.px, p2.py], polyScreen);
+            const nx = norm.nx;
+            const ny = norm.ny;
 
             const spanW = Math.min(edgeLen * 0.7, Math.max(16, totWin * 14));
             const wStartX = midEdgeX - (ux * spanW) / 2;
@@ -483,7 +678,7 @@ const modeler = {
             ctx.fillStyle = "#0369a1";
             ctx.font = "bold 9px Segoe UI";
             ctx.textAlign = "center";
-            ctx.fillText(`🪟 x${totWin}`, midEdgeX - nx * 8, midEdgeY - ny * 8);
+            ctx.fillText(`🪟 x${totWin}`, midEdgeX + nx * 10, midEdgeY + ny * 10);
           }
         }
 
@@ -498,6 +693,10 @@ const modeler = {
           if (edgeLen > 0) {
             const ux = dx / edgeLen;
             const uy = dy / edgeLen;
+            const polyScreen = pts.map(p => [p.px, p.py]);
+            const norm = this.getEdgeOutwardNormal([p1.px, p1.py], [p2.px, p2.py], polyScreen);
+            const nx = norm.nx;
+            const ny = norm.ny;
             const dGap = Math.min(edgeLen * 0.45, 18);
 
             ctx.strokeStyle = "#b45309";
@@ -510,19 +709,20 @@ const modeler = {
             ctx.fillStyle = "#92400e";
             ctx.font = "bold 9px Segoe UI";
             ctx.textAlign = "center";
-            ctx.fillText(`🚪 x${totDoor}`, midEdgeX, midEdgeY + 12);
+            ctx.fillText(`🚪 x${totDoor}`, midEdgeX + nx * 12, midEdgeY + ny * 12);
           }
         }
       }
 
-      // Corner handles if selected
+      // Corner handles if selected for interactive resizing
       if (isSelected && pts.length === 4) {
-        ctx.fillStyle = "#0284c7";
-        pts.forEach(p => {
-          ctx.fillRect(p.px - 4, p.py - 4, 8, 8);
+        pts.forEach((p, vIdx) => {
+          const isVHover = this.hoveredVertexIdx === vIdx;
+          ctx.fillStyle = isVHover ? "#f59e0b" : "#0284c7";
+          ctx.fillRect(p.px - 5, p.py - 5, 10, 10);
           ctx.strokeStyle = "#fff";
-          ctx.lineWidth = 1.2;
-          ctx.strokeRect(p.px - 4, p.py - 4, 8, 8);
+          ctx.lineWidth = 1.5;
+          ctx.strokeRect(p.px - 5, p.py - 5, 10, 10);
         });
       }
     });
@@ -549,7 +749,11 @@ const modeler = {
       const hFt = Math.abs(s.y1 - s.y0);
       ctx.fillStyle = "#0284c7";
       ctx.font = "bold 11px Segoe UI";
-      ctx.fillText(`${wFt} ft x ${hFt} ft (${wFt * hFt} sqft)`, rx + rw / 2, ry + rh / 2);
+      const isSI = typeof I18N !== "undefined" && I18N.isSI();
+      const previewText = isSI
+        ? `${(wFt * 0.3048).toFixed(1)} m x ${(hFt * 0.3048).toFixed(1)} m (${(wFt * hFt * 0.0929).toFixed(1)} m²)`
+        : `${wFt} ft x ${hFt} ft (${wFt * hFt} sqft)`;
+      ctx.fillText(previewText, rx + rw / 2, ry + rh / 2);
     }
 
     ctx.textAlign = "left";
@@ -564,17 +768,31 @@ const modeler = {
 
     ctx.fillStyle = "#0f172a";
     ctx.font = "bold 12.5px Segoe UI";
-    ctx.fillText("3D Extruded Building Model (Mouse Orbit & Zoom)", ox + 15, oy + 22);
+    const orbitTitle = typeof I18N !== "undefined" && I18N.getLanguage() === "pt-BR"
+      ? "Modelo Isométrico 3D Extrudado (Órbita e Zoom com Mouse)"
+      : "3D Extruded Building Model (Mouse Orbit & Zoom)";
+    ctx.fillText(orbitTitle, ox + 15, oy + 22);
 
     const cx = ox + w / 2 + this.pan3d.x;
     const cy = oy + h / 2 + this.pan3d.y;
     const az = (this.rot3d.az * Math.PI) / 180.0;
     const el = (this.rot3d.el * Math.PI) / 180.0;
-    const s3 = this.zoom3d * 1.1;
 
     const allSpaces = this.getAllSpaces();
+    const activeSpaces = allSpaces.filter(sp => (sp.level || "Level 1") === this.activeLevel);
+    const targetSpaces = activeSpaces.length > 0 ? activeSpaces : allSpaces;
+
+    // Filter to primary architectural cluster to avoid distant sketch outliers from scaling down the building
+    const mainCluster = targetSpaces.filter(sp => {
+      if (!sp.geometry || !sp.geometry.polygon) return false;
+      const cX = sp.geometry.polygon.reduce((s, p) => s + p[0], 0) / sp.geometry.polygon.length;
+      const cY = sp.geometry.polygon.reduce((s, p) => s + p[1], 0) / sp.geometry.polygon.length;
+      return cX <= 420 && cY <= 400;
+    });
+    const spacesToFit = mainCluster.length > 0 ? mainCluster : targetSpaces;
+
     let minX = 9999, maxX = -9999, minY = 9999, maxY = -9999;
-    allSpaces.forEach(sp => {
+    spacesToFit.forEach(sp => {
       if (sp.geometry && sp.geometry.polygon) {
         sp.geometry.polygon.forEach(pt => {
           if (pt[0] < minX) minX = pt[0];
@@ -584,13 +802,19 @@ const modeler = {
         });
       }
     });
-    const midX = (minX + maxX) / 2 || 150;
-    const midY = (minY + maxY) / 2 || 150;
+
+    const midX = (minX + maxX) / 2 || 190;
+    const midY = (minY + maxY) / 2 || 180;
+    const spanX = Math.max(120, maxX - minX);
+    const spanY = Math.max(120, maxY - minY);
+    const maxSpan = Math.max(spanX, spanY);
+    const fitScale = (Math.min(w, h) * 0.82) / maxSpan;
+    const s3 = fitScale * this.zoom3d;
 
     const project3D = (x, y, z) => {
       const dx = (x - midX) * s3;
       const dy = (y - midY) * s3;
-      const dz = z * 4.4 * s3;
+      const dz = z * 3.8 * s3;
       const xr = dx * Math.cos(az) - dy * Math.sin(az);
       const yr = dx * Math.sin(az) + dy * Math.cos(az);
       return {
@@ -647,7 +871,8 @@ const modeler = {
       });
     });
 
-    faces.sort((a, b) => a.depth - b.depth);
+    // Painter's algorithm: sort faces from back to front (largest depth first)
+    faces.sort((a, b) => b.depth - a.depth);
 
     faces.forEach(f => {
       ctx.beginPath();
@@ -659,42 +884,49 @@ const modeler = {
       ctx.lineWidth = f.selected ? 2.8 : (f.spaceSelected ? 2.0 : 0.9);
       ctx.stroke();
 
-      // Render windows on 3D wall face
-      if (f.windows && f.windows.length > 0 && f.poly.length === 4) {
+      // Bilinear interpolation helper for exact quad face projection
+      if (f.poly.length === 4) {
         const [b1, b2, t2, t1] = f.poly;
-        const wP = [
-          { px: b1.px * 0.6 + t1.px * 0.4 + (b2.px - b1.px) * 0.22, py: b1.py * 0.6 + t1.py * 0.4 + (b2.py - b1.py) * 0.22 },
-          { px: b1.px * 0.6 + t1.px * 0.4 + (b2.px - b1.px) * 0.78, py: b1.py * 0.6 + t1.py * 0.4 + (b2.py - b1.py) * 0.78 },
-          { px: b1.px * 0.15 + t1.px * 0.85 + (b2.px - b1.px) * 0.78, py: b1.py * 0.15 + t1.py * 0.85 + (b2.py - b1.py) * 0.78 },
-          { px: b1.px * 0.15 + t1.px * 0.85 + (b2.px - b1.px) * 0.22, py: b1.py * 0.15 + t1.py * 0.85 + (b2.py - b1.py) * 0.22 },
-        ];
-        ctx.beginPath();
-        wP.forEach((p, idx) => idx === 0 ? ctx.moveTo(p.px, p.py) : ctx.lineTo(p.px, p.py));
-        ctx.closePath();
-        ctx.fillStyle = "#38bdf8";
-        ctx.fill();
-        ctx.strokeStyle = "#0369a1";
-        ctx.lineWidth = 1.2;
-        ctx.stroke();
-      }
+        const lerpFace = (u, v) => ({
+          px: (1 - u) * (1 - v) * b1.px + u * (1 - v) * b2.px + u * v * t2.px + (1 - u) * v * t1.px,
+          py: (1 - u) * (1 - v) * b1.py + u * (1 - v) * b2.py + u * v * t2.py + (1 - u) * v * t1.py,
+        });
 
-      // Render doors on 3D wall face
-      if (f.doors && f.doors.length > 0 && f.poly.length === 4) {
-        const [b1, b2, t2, t1] = f.poly;
-        const dP = [
-          { px: b1.px * 0.95 + t1.px * 0.05 + (b2.px - b1.px) * 0.35, py: b1.py * 0.95 + t1.py * 0.05 + (b2.py - b1.py) * 0.35 },
-          { px: b1.px * 0.95 + t1.px * 0.05 + (b2.px - b1.px) * 0.65, py: b1.py * 0.95 + t1.py * 0.05 + (b2.py - b1.py) * 0.65 },
-          { px: b1.px * 0.35 + t1.px * 0.65 + (b2.px - b1.px) * 0.65, py: b1.py * 0.35 + t1.py * 0.65 + (b2.py - b1.py) * 0.65 },
-          { px: b1.px * 0.35 + t1.px * 0.65 + (b2.px - b1.px) * 0.35, py: b1.py * 0.35 + t1.py * 0.65 + (b2.py - b1.py) * 0.35 },
-        ];
-        ctx.beginPath();
-        dP.forEach((p, idx) => idx === 0 ? ctx.moveTo(p.px, p.py) : ctx.lineTo(p.px, p.py));
-        ctx.closePath();
-        ctx.fillStyle = "#d97706";
-        ctx.fill();
-        ctx.strokeStyle = "#78350f";
-        ctx.lineWidth = 1.2;
-        ctx.stroke();
+        // Render windows on 3D wall face
+        if (f.windows && f.windows.length > 0) {
+          const wP = [
+            lerpFace(0.20, 0.28),
+            lerpFace(0.80, 0.28),
+            lerpFace(0.80, 0.85),
+            lerpFace(0.20, 0.85),
+          ];
+          ctx.beginPath();
+          wP.forEach((p, idx) => idx === 0 ? ctx.moveTo(p.px, p.py) : ctx.lineTo(p.px, p.py));
+          ctx.closePath();
+          ctx.fillStyle = "rgba(56, 189, 248, 0.85)";
+          ctx.fill();
+          ctx.strokeStyle = "#0284c7";
+          ctx.lineWidth = 1.5;
+          ctx.stroke();
+        }
+
+        // Render doors on 3D wall face
+        if (f.doors && f.doors.length > 0) {
+          const dP = [
+            lerpFace(0.35, 0.0),
+            lerpFace(0.65, 0.0),
+            lerpFace(0.65, 0.75),
+            lerpFace(0.35, 0.75),
+          ];
+          ctx.beginPath();
+          dP.forEach((p, idx) => idx === 0 ? ctx.moveTo(p.px, p.py) : ctx.lineTo(p.px, p.py));
+          ctx.closePath();
+          ctx.fillStyle = "rgba(180, 83, 9, 0.9)";
+          ctx.fill();
+          ctx.strokeStyle = "#78350f";
+          ctx.lineWidth = 1.6;
+          ctx.stroke();
+        }
       }
 
       // Roof label
@@ -737,10 +969,11 @@ const modeler = {
     };
 
     // North points up in standard plan view (angle -PI/2)
+    const isPTComp = typeof I18N !== "undefined" && I18N.getLanguage() === "pt-BR";
     drawCardinal(-Math.PI / 2, "N", "#dc2626", true);
-    drawCardinal(0, "E", "#475569", false);
+    drawCardinal(0, isPTComp ? "L" : "E", "#475569", false);
     drawCardinal(Math.PI / 2, "S", "#475569", false);
-    drawCardinal(Math.PI, "W", "#475569", false);
+    drawCardinal(Math.PI, isPTComp ? "O" : "W", "#475569", false);
 
     // North Indicator Arrow
     const nArrowAngle = compAngle - Math.PI / 2;
@@ -766,6 +999,13 @@ const modeler = {
     cvs.addEventListener("mousemove", (e) => this.onMouseMove(e, cvs));
     cvs.addEventListener("mouseup", (e) => this.onMouseUp(e, cvs));
     cvs.addEventListener("wheel", (e) => this.onWheel(e, cvs), { passive: false });
+    cvs.addEventListener("contextmenu", (e) => this.onContextMenu(e, cvs));
+    window.addEventListener("click", (e) => {
+      const menu = document.getElementById("cad-context-menu");
+      if (menu && menu.style.display !== "none" && !menu.contains(e.target)) {
+        this.hideContextMenu();
+      }
+    });
     window.addEventListener("keydown", (e) => this.onKeyDown(e));
   },
 
@@ -776,15 +1016,39 @@ const modeler = {
     const splitX = this.viewMode === "split" ? cvs.width * 0.52 : (this.viewMode === "3d" ? 0 : cvs.width);
 
     if (mx < splitX && this.viewMode !== "3d") {
+      // Right click is reserved for CAD context menu
+      if (e.button === 2) return;
       const panX = this.pan2d.x;
       const panY = this.pan2d.y;
       const mPt = this.screenToModel(mx, my, panX, panY);
 
+      // 1. Check if clicking on an interactive resize handle of the currently selected room
+      const selSp = this.getSelectedSpace();
+      if (selSp && selSp.geometry && selSp.geometry.polygon && selSp.geometry.polygon.length === 4) {
+        const polyScreen = selSp.geometry.polygon.map(p => this.modelToScreen(p[0], p[1], panX, panY));
+        for (let vIdx = 0; vIdx < polyScreen.length; vIdx++) {
+          if (Math.hypot(mx - polyScreen[vIdx].px, my - polyScreen[vIdx].py) <= 9) {
+            this.dragState = {
+              mode: "resize_vertex",
+              space: selSp,
+              vertexIdx: vIdx,
+              startX: mPt.x,
+              startY: mPt.y,
+              origPoly: JSON.parse(JSON.stringify(selSp.geometry.polygon)),
+            };
+            this.render();
+            return;
+          }
+        }
+      }
+
+      // 2. Draw rectangle tool
       if (this.currentTool === "draw_rect") {
         this.dragState = { mode: "draw_rect", x0: mPt.x, y0: mPt.y, x1: mPt.x, y1: mPt.y };
         return;
       }
 
+      // 3. Room hit testing
       const spaces = this.getSpacesOnLevel(this.activeLevel);
       let hitSpace = null;
       for (const sp of spaces) {
@@ -806,17 +1070,20 @@ const modeler = {
             closestWall = i;
           }
         }
-        if (minD < 6.0) {
+        if (minD < 8.0) {
           this.selectedWallIdx = closestWall;
         } else if (this.selectedWallIdx === null || this.selectedWallIdx >= pts.length) {
           this.selectedWallIdx = 0;
         }
 
+        // Pending select/move with 5px drag threshold to prevent accidental movement on clicks
         this.dragState = {
-          mode: "move_room",
+          mode: "pending_select_or_move",
           space: hitSpace,
           startX: mPt.x,
           startY: mPt.y,
+          startScreenX: mx,
+          startScreenY: my,
           origPoly: JSON.parse(JSON.stringify(hitSpace.geometry.polygon)),
         };
       } else {
@@ -846,15 +1113,51 @@ const modeler = {
 
     if (this.dragState) {
       const mPt = this.screenToModel(mx, my, panX, panY);
+
       if (this.dragState.mode === "draw_rect") {
         this.dragState.x1 = mPt.x;
         this.dragState.y1 = mPt.y;
         this.render();
+      } else if (this.dragState.mode === "pending_select_or_move") {
+        if (Math.hypot(mx - this.dragState.startScreenX, my - this.dragState.startScreenY) > 5) {
+          this.dragState.mode = "move_room";
+        }
       } else if (this.dragState.mode === "move_room") {
         const dx = mPt.x - this.dragState.startX;
         const dy = mPt.y - this.dragState.startY;
         const sp = this.dragState.space;
-        sp.geometry.polygon = this.dragState.origPoly.map(pt => [pt[0] + dx, pt[1] + dy]);
+        const snap = this.gridSnap;
+        sp.geometry.polygon = this.dragState.origPoly.map(pt => [
+          Math.round((pt[0] + dx) / snap) * snap,
+          Math.round((pt[1] + dy) / snap) * snap
+        ]);
+        this.syncSpaceFromGeometry(sp);
+        this.render();
+      } else if (this.dragState.mode === "resize_vertex") {
+        const sp = this.dragState.space;
+        const vIdx = this.dragState.vertexIdx;
+        const orig = this.dragState.origPoly;
+        const snap = this.gridSnap;
+        const nX = Math.round(mPt.x / snap) * snap;
+        const nY = Math.round(mPt.y / snap) * snap;
+
+        // Keep 4-point orthogonal room rectangular when moving a corner
+        const poly = JSON.parse(JSON.stringify(orig));
+        poly[vIdx] = [nX, nY];
+        if (vIdx === 0) {
+          poly[1][1] = nY;
+          poly[3][0] = nX;
+        } else if (vIdx === 1) {
+          poly[0][1] = nY;
+          poly[2][0] = nX;
+        } else if (vIdx === 2) {
+          poly[3][1] = nY;
+          poly[1][0] = nX;
+        } else if (vIdx === 3) {
+          poly[2][1] = nY;
+          poly[0][0] = nX;
+        }
+        sp.geometry.polygon = poly;
         this.syncSpaceFromGeometry(sp);
         this.render();
       } else if (this.dragState.mode === "pan_2d") {
@@ -863,22 +1166,46 @@ const modeler = {
         this.render();
       }
     } else if (mx < splitX && this.viewMode !== "3d") {
-      // Wall hover detection on selected space
+      // Dynamic cursor and hover detection
       const sp = this.getSelectedSpace();
-      if (sp && sp.geometry && sp.geometry.polygon) {
-        const mPt = this.screenToModel(mx, my, panX, panY);
-        const pts = sp.geometry.polygon;
-        let closest = null, minD = 999999;
-        for (let i = 0; i < pts.length; i++) {
-          const d = this.distToSegment(mPt.x, mPt.y, pts[i][0], pts[i][1], pts[(i + 1) % pts.length][0], pts[(i + 1) % pts.length][1]);
-          if (d < minD) { minD = d; closest = i; }
+      let hoveredVertex = null;
+      if (sp && sp.geometry && sp.geometry.polygon && sp.geometry.polygon.length === 4) {
+        const polyScreen = sp.geometry.polygon.map(p => this.modelToScreen(p[0], p[1], panX, panY));
+        for (let vIdx = 0; vIdx < polyScreen.length; vIdx++) {
+          if (Math.hypot(mx - polyScreen[vIdx].px, my - polyScreen[vIdx].py) <= 8) {
+            hoveredVertex = vIdx;
+            break;
+          }
         }
-        if (minD < 5.0 && closest !== this.hoveredWallIdx) {
-          this.hoveredWallIdx = closest;
+      }
+
+      if (hoveredVertex !== null) {
+        this.hoveredVertexIdx = hoveredVertex;
+        cvs.style.cursor = "crosshair";
+        this.render();
+      } else {
+        if (this.hoveredVertexIdx !== null) {
+          this.hoveredVertexIdx = null;
           this.render();
-        } else if (minD >= 5.0 && this.hoveredWallIdx !== null) {
-          this.hoveredWallIdx = null;
-          this.render();
+        }
+        cvs.style.cursor = this.currentTool === "draw_rect" ? "crosshair" : "default";
+
+        // Wall edge hover detection
+        if (sp && sp.geometry && sp.geometry.polygon) {
+          const mPt = this.screenToModel(mx, my, panX, panY);
+          const pts = sp.geometry.polygon;
+          let closest = null, minD = 999999;
+          for (let i = 0; i < pts.length; i++) {
+            const d = this.distToSegment(mPt.x, mPt.y, pts[i][0], pts[i][1], pts[(i + 1) % pts.length][0], pts[(i + 1) % pts.length][1]);
+            if (d < minD) { minD = d; closest = i; }
+          }
+          if (minD < 5.0 && closest !== this.hoveredWallIdx) {
+            this.hoveredWallIdx = closest;
+            this.render();
+          } else if (minD >= 5.0 && this.hoveredWallIdx !== null) {
+            this.hoveredWallIdx = null;
+            this.render();
+          }
         }
       }
     }
@@ -909,7 +1236,7 @@ const modeler = {
         if (w >= 10 && h >= 10) {
           this.createNewRoomFromRect(xMin, yMin, w, h);
         }
-      } else if (this.dragState.mode === "move_room") {
+      } else if (this.dragState.mode === "move_room" || this.dragState.mode === "resize_vertex") {
         app.triggerAutoRecalculate();
       }
       this.dragState = null;
@@ -935,6 +1262,9 @@ const modeler = {
   },
 
   onKeyDown(e) {
+    if (e.key === "Escape") {
+      this.hideContextMenu();
+    }
     if (e.key === "Delete" && document.activeElement.tagName !== "INPUT" && document.activeElement.tagName !== "SELECT") {
       this.deleteSelectedRoom();
     }
@@ -1078,9 +1408,10 @@ const modeler = {
 
     const sp = this.getSelectedSpace();
     if (!sp) {
+      const emptyMsg = typeof I18N !== "undefined" ? I18N.t("cad.empty_inspector") : "👈 Click on any room on the floor plan to inspect its walls.";
       el.innerHTML = `
         <div style="color:#64748b;font-style:italic;padding:12px;text-align:center">
-          👈 Click on any room on the floor plan to inspect its walls, set orientations (North, South, East, West), assemblies, and add windows or doors.
+          ${emptyMsg}
         </div>
       `;
       return;
@@ -1093,15 +1424,22 @@ const modeler = {
     const selIdx = this.selectedWallIdx;
     const wall = walls[selIdx];
 
+    const isPT = typeof I18N !== "undefined" && I18N.getLanguage() === "pt-BR";
     const wallTabsHtml = walls.map((w, idx) => {
       const act = idx === selIdx ? "active" : "";
-      const oriIcon = w.is_interior ? "🚪 Partition" : `🧭 ${w.orientation}`;
+      let oriStr = w.orientation;
+      if (typeof I18N !== "undefined") {
+        oriStr = I18N.t("compass." + w.orientation).split(" (")[0] || w.orientation;
+      }
+      const oriIcon = w.is_interior ? (isPT ? "🚪 Divisória" : "🚪 Partition") : `🧭 ${oriStr}`;
       const winCount = (w.windows || []).reduce((s, wi) => s + (parseInt(wi.qty) || 1), 0);
       const doorCount = (w.doors || []).reduce((s, di) => s + (parseInt(di.qty) || 1), 0);
       const tags = (winCount > 0 ? ` 🪟${winCount}` : "") + (doorCount > 0 ? ` 🚪${doorCount}` : "");
+      const lenFmt = typeof I18N !== "undefined" ? I18N.formatLength(w.length_ft, 1) : `${w.length_ft}'`;
+      const tabPrefix = typeof I18N !== "undefined" ? I18N.t("cad.wall_tab_prefix") : "Wall";
       return `
         <button class="wall-tab-btn ${act}" onclick="modeler.selectWallTab(${idx})">
-          🧱 Wall ${idx + 1} (${oriIcon}, ${w.length_ft}')${tags}
+          🧱 ${tabPrefix} ${idx + 1} (${oriIcon}, ${lenFmt})${tags}
         </button>
       `;
     }).join("");
@@ -1116,17 +1454,20 @@ const modeler = {
     const winLibs = (app.state.project.libraries && app.state.project.libraries.windows) || [];
     const doorLibs = (app.state.project.libraries && app.state.project.libraries.doors) || [];
 
-    const wallOptionsHtml = wallLibs.map(wl => `
-      <option value="${wl.id}" ${wl.id === wall.wall_assembly_id ? "selected" : ""}>${wl.name} (U=${wl.overall_u})</option>
-    `).join("");
+    const isSI = typeof I18N !== "undefined" && I18N.isSI();
+    const wallOptionsHtml = wallLibs.map(wl => {
+      const uFmt = isSI ? `U=${(wl.overall_u * 5.67826).toFixed(3)} W/m²K` : `U=${wl.overall_u}`;
+      return `<option value="${wl.id}" ${wl.id === wall.wall_assembly_id ? "selected" : ""}>${wl.name} (${uFmt})</option>`;
+    }).join("");
 
-    const orientationOptionsHtml = this.COMPASS_CARDINALS.map(c => `
-      <option value="${c.code}" ${c.code === wall.orientation ? "selected" : ""}>${c.label}</option>
-    `).join("");
+    const orientationOptionsHtml = this.COMPASS_CARDINALS.map(c => {
+      const lbl = typeof I18N !== "undefined" ? I18N.t("compass." + c.code) : c.label;
+      return `<option value="${c.code}" ${c.code === wall.orientation ? "selected" : ""}>${lbl}</option>`;
+    }).join("");
 
     // Calculate window and door total areas
     const ceilingH = parseFloat(sp.ceiling_height_ft || 9.0);
-    const grossArea = Math.round(wall.length_ft * 12.0 * 10) / 10;
+    const grossArea = Math.round(wall.length_ft * ceilingH * 10) / 10;
     let winAreaTot = 0.0;
     let doorAreaTot = 0.0;
 
@@ -1139,11 +1480,14 @@ const modeler = {
       winAreaTot += a;
 
       const optHtml = winLibs.map(wl => `<option value="${wl.id}" ${wl.id === wi.window_id ? "selected" : ""}>${wl.name}</option>`).join("");
+      const dimLabel = isSI
+        ? `${(wW * 0.3048).toFixed(2)}m x ${(wH * 0.3048).toFixed(2)}m (${(a * 0.0929).toFixed(2)} m²)`
+        : `${wW}'x${wH}' (${a} sqft)`;
       return `
         <div class="aperture-card">
           <select onchange="modeler.updateWindowOnWall(${selIdx}, ${wIdx}, 'window_id', this.value)">${optHtml}</select>
-          <label style="font-size:10px">Qty: <input type="number" min="1" max="20" value="${qty}" onchange="modeler.updateWindowOnWall(${selIdx}, ${wIdx}, 'qty', this.value)" /></label>
-          <span style="color:#0369a1;font-weight:600">${wW}'x${wH}' (${a} sqft)</span>
+          <label style="font-size:10px">${isPT ? "Qtd:" : "Qty:"} <input type="number" min="1" max="20" value="${qty}" onchange="modeler.updateWindowOnWall(${selIdx}, ${wIdx}, 'qty', this.value)" /></label>
+          <span style="color:#0369a1;font-weight:600">${dimLabel}</span>
           <button class="btn-xs danger" onclick="modeler.removeWindowFromWall(${selIdx}, ${wIdx})" title="Remove Window">✕</button>
         </div>
       `;
@@ -1158,25 +1502,83 @@ const modeler = {
       doorAreaTot += a;
 
       const optHtml = doorLibs.map(dl => `<option value="${dl.id}" ${dl.id === di.door_id ? "selected" : ""}>${dl.name}</option>`).join("");
+      const dimLabel = isSI
+        ? `${(dW * 0.3048).toFixed(2)}m x ${(dH * 0.3048).toFixed(2)}m (${(a * 0.0929).toFixed(2)} m²)`
+        : `${dW}'x${dH}' (${a} sqft)`;
       return `
         <div class="aperture-card">
           <select onchange="modeler.updateDoorOnWall(${selIdx}, ${dIdx}, 'door_id', this.value)">${optHtml}</select>
-          <label style="font-size:10px">Qty: <input type="number" min="1" max="10" value="${qty}" onchange="modeler.updateDoorOnWall(${selIdx}, ${dIdx}, 'qty', this.value)" /></label>
-          <span style="color:#b45309;font-weight:600">${dW}'x${dH}' (${a} sqft)</span>
+          <label style="font-size:10px">${isPT ? "Qtd:" : "Qty:"} <input type="number" min="1" max="10" value="${qty}" onchange="modeler.updateDoorOnWall(${selIdx}, ${dIdx}, 'qty', this.value)" /></label>
+          <span style="color:#b45309;font-weight:600">${dimLabel}</span>
           <button class="btn-xs danger" onclick="modeler.removeDoorFromWall(${selIdx}, ${dIdx})" title="Remove Door">✕</button>
         </div>
       `;
     }).join("");
 
     const netWallArea = Math.max(0, Math.round((grossArea - winAreaTot - doorAreaTot) * 10) / 10);
+    const areaFmt = typeof I18N !== "undefined" ? I18N.formatArea(sp.floor_area_sqft) : `${sp.floor_area_sqft} sqft`;
+    const lenFmt = typeof I18N !== "undefined" ? I18N.formatLength(wall.length_ft, 2) : `${wall.length_ft} ft`;
+    const ceilFmt = typeof I18N !== "undefined" ? I18N.formatLength(ceilingH, 2) : `${ceilingH} ft`;
+    const grossFmt = typeof I18N !== "undefined" ? I18N.formatArea(grossArea, 1) : `${grossArea} sqft`;
+    const winFmt = typeof I18N !== "undefined" ? I18N.formatArea(winAreaTot, 1) : `${winAreaTot} sqft`;
+    const doorFmt = typeof I18N !== "undefined" ? I18N.formatArea(doorAreaTot, 1) : `${doorAreaTot} sqft`;
+    const netFmt = typeof I18N !== "undefined" ? I18N.formatArea(netWallArea, 1) : `${netWallArea} sqft`;
+
+    const curAz = this.compassToAzimuth(wall.orientation);
+    const peakFlux = this.getPeakSolarFlux(wall.orientation);
+
+    let oppText = "—";
+    let perpText = "—";
+
+    if (sp.walls && sp.walls.length === 4) {
+      const oppIdx = (selIdx + 2) % 4;
+      const oppWall = sp.walls[oppIdx];
+      const oppAz = this.compassToAzimuth(oppWall.orientation);
+      oppText = `${isPT ? "Parede" : "Wall"} ${oppIdx + 1}: ${oppWall.orientation}${oppAz !== null ? ` (${oppAz}°)` : ""}`;
+
+      const p1Idx = (selIdx + 1) % 4;
+      const p2Idx = (selIdx + 3) % 4;
+      const p1Wall = sp.walls[p1Idx];
+      const p2Wall = sp.walls[p2Idx];
+      perpText = `P${p1Idx + 1}: ${p1Wall.orientation} | P${p2Idx + 1}: ${p2Wall.orientation}`;
+    } else if (sp.walls && sp.walls.length > 4) {
+      const oppIdx = (selIdx + Math.floor(sp.walls.length / 2)) % sp.walls.length;
+      const oppWall = sp.walls[oppIdx];
+      oppText = `${isPT ? "Parede" : "Wall"} ${oppIdx + 1}: ${oppWall.orientation}`;
+      perpText = `Total: ${sp.walls.length} ${isPT ? "paredes" : "walls"}`;
+    }
+
+    const solarCardHtml = (curAz !== null) ? `
+      <div class="solar-incidence-card">
+        <div class="sic-title">${typeof I18N !== "undefined" ? I18N.t("cad.solar_incidence_title") : "☀️ Ângulo de Incidência Solar & Azimute"}</div>
+        <div class="sic-grid">
+          <div class="sic-item">
+            <span class="lbl">${typeof I18N !== "undefined" ? I18N.t("cad.wall_azimuth_label") : "Azimute da Parede:"}</span>
+            <span class="val">${curAz}° (${wall.orientation})</span>
+          </div>
+          <div class="sic-item">
+            <span class="lbl">${typeof I18N !== "undefined" ? I18N.t("cad.peak_solar_flux_label") : "Radiação de Pico:"}</span>
+            <span class="val">${peakFlux}</span>
+          </div>
+          <div class="sic-item">
+            <span class="lbl">${typeof I18N !== "undefined" ? I18N.t("cad.opposite_wall_label") : "Parede Oposta (180°):"}</span>
+            <span class="val">${oppText}</span>
+          </div>
+          <div class="sic-item">
+            <span class="lbl">${typeof I18N !== "undefined" ? I18N.t("cad.adjacent_walls_label") : "Perpendiculares (90°/270°):"}</span>
+            <span class="val">${perpText}</span>
+          </div>
+        </div>
+      </div>
+    ` : "";
 
     el.innerHTML = `
       <div class="wall-inspector-header">
         <div class="wi-title">
-          🏢 <strong>${sp.name}</strong> — Wall &amp; Openings Inspector (Paredes, Direções, Janelas e Portas)
+          🏢 <strong>${sp.name}</strong> — ${typeof I18N !== "undefined" ? I18N.t("cad.wall_inspector_title") : "Wall & Openings Inspector"}
         </div>
         <div class="wi-meta">
-          Level: <strong>${sp.level}</strong> | Area: <strong>${sp.floor_area_sqft} sqft</strong> | Zone: <strong>${sp.zone_name}</strong> | Exposure: <strong>${sp.exposure}</strong>
+          ${typeof I18N !== "undefined" ? I18N.t("cad.level") : "Level:"} <strong>${sp.level}</strong> | ${isPT ? "Área" : "Area"}: <strong>${areaFmt}</strong> | ${isPT ? "Zona" : "Zone"}: <strong>${sp.zone_name}</strong> | ${isPT ? "Exposição" : "Exposure"}: <strong>${sp.exposure}</strong>
         </div>
       </div>
 
@@ -1185,42 +1587,66 @@ const modeler = {
       <div class="wall-detail-grid">
         <!-- Col 1: Wall Properties -->
         <div class="wall-prop-col">
-          <label>Orientation / Exposure (Direção da Parede):
+          <label>${typeof I18N !== "undefined" ? I18N.t("cad.orientation_label") : "Orientation / Solar Exposure:"}
             <select onchange="modeler.setWallOrientation(${selIdx}, this.value)">
               ${orientationOptionsHtml}
             </select>
           </label>
-          <label>Wall Construction Assembly (Tipo de Parede):
+
+          <div class="solar-prop-toggle">
+            <label>
+              <input type="checkbox" id="cad-auto-propagate" ${this.autoPropagateOrientations ? "checked" : ""} onchange="modeler.autoPropagateOrientations = this.checked" />
+              <span>${typeof I18N !== "undefined" ? I18N.t("cad.auto_propagate_label") : "Calcular automaticamente as outras 3 paredes (90° / 180° / 270°)"}</span>
+            </label>
+          </div>
+
+          <div>
+            <span style="font-size:10.5px;font-weight:600;color:#64748b">${typeof I18N !== "undefined" ? I18N.t("cad.quick_orientations") : "Atalhos Rápidos de Orientação:"}</span>
+            <div class="quick-ori-row">
+              <button type="button" class="quick-ori-btn ${wall.orientation === 'N' ? 'active' : ''}" onclick="modeler.setWallOrientation(${selIdx}, 'N')">N (0°)</button>
+              <button type="button" class="quick-ori-btn ${wall.orientation === 'NE' ? 'active' : ''}" onclick="modeler.setWallOrientation(${selIdx}, 'NE')">NE (45°)</button>
+              <button type="button" class="quick-ori-btn ${wall.orientation === 'E' ? 'active' : ''}" onclick="modeler.setWallOrientation(${selIdx}, 'E')">L / E (90°)</button>
+              <button type="button" class="quick-ori-btn ${wall.orientation === 'SE' ? 'active' : ''}" onclick="modeler.setWallOrientation(${selIdx}, 'SE')">SE (135°)</button>
+              <button type="button" class="quick-ori-btn ${wall.orientation === 'S' ? 'active' : ''}" onclick="modeler.setWallOrientation(${selIdx}, 'S')">S (180°)</button>
+              <button type="button" class="quick-ori-btn ${wall.orientation === 'SW' ? 'active' : ''}" onclick="modeler.setWallOrientation(${selIdx}, 'SW')">SO / SW (225°)</button>
+              <button type="button" class="quick-ori-btn ${wall.orientation === 'W' ? 'active' : ''}" onclick="modeler.setWallOrientation(${selIdx}, 'W')">O / W (270°)</button>
+              <button type="button" class="quick-ori-btn ${wall.orientation === 'NW' ? 'active' : ''}" onclick="modeler.setWallOrientation(${selIdx}, 'NW')">NO / NW (315°)</button>
+            </div>
+          </div>
+
+          ${solarCardHtml}
+
+          <label style="margin-top:4px">${typeof I18N !== "undefined" ? I18N.t("cad.assembly_label") : "Wall Construction Assembly:"}
             <select onchange="modeler.setWallAssembly(${selIdx}, this.value)">
               ${wallOptionsHtml}
             </select>
           </label>
           <div class="wall-dim-readout">
-            <div>Length: <strong>${wall.length_ft} ft</strong> | Floor-to-Ceiling: <strong>${ceilingH} ft</strong></div>
-            <div>Gross Wall: <strong>${grossArea} sqft</strong> | Windows: <strong>${winAreaTot} sqft</strong> | Doors: <strong>${doorAreaTot} sqft</strong></div>
-            <div style="font-size:11.5px;color:#005a9e;margin-top:2px">Net Conduction Area: <strong>${netWallArea} sqft</strong></div>
+            <div>${typeof I18N !== "undefined" ? I18N.t("cad.length") : "Length:"} <strong>${lenFmt}</strong> | ${typeof I18N !== "undefined" ? I18N.t("cad.ceiling_height") : "Floor-to-Ceiling:"} <strong>${ceilFmt}</strong></div>
+            <div>${typeof I18N !== "undefined" ? I18N.t("cad.gross_area") : "Gross Wall:"} <strong>${grossFmt}</strong> | ${typeof I18N !== "undefined" ? I18N.t("cad.windows_area") : "Windows:"} <strong>${winFmt}</strong> | ${typeof I18N !== "undefined" ? I18N.t("cad.doors_area") : "Doors:"} <strong>${doorFmt}</strong></div>
+            <div style="font-size:11.5px;color:#005a9e;margin-top:2px">${typeof I18N !== "undefined" ? I18N.t("cad.net_area") : "Net Conduction Area:"} <strong>${netFmt}</strong></div>
           </div>
         </div>
 
         <!-- Col 2: Windows -->
         <div class="wall-aperture-col">
           <div class="aperture-header">
-            <span>🪟 Windows on Wall ${selIdx + 1} (${(wall.windows || []).length})</span>
-            <button class="btn-xs primary" onclick="modeler.addWindowToWall(${selIdx})">+ Add Window</button>
+            <span>🪟 ${typeof I18N !== "undefined" ? I18N.t("cad.windows_col_title") : "Windows on Wall"} ${selIdx + 1} (${(wall.windows || []).length})</span>
+            <button class="btn-xs primary" onclick="modeler.addWindowToWall(${selIdx})">${typeof I18N !== "undefined" ? I18N.t("cad.add_win_btn") : "+ Add Window"}</button>
           </div>
           <div class="aperture-list">
-            ${windowsListHtml || '<div style="color:#94a3b8;font-style:italic;padding:8px;font-size:11px">No windows on this wall. Click "+ Add Window" above to insert.</div>'}
+            ${windowsListHtml || `<div style="color:#94a3b8;font-style:italic;padding:8px;font-size:11px">${typeof I18N !== "undefined" ? I18N.t("cad.no_windows") : "No windows on this wall."}</div>`}
           </div>
         </div>
 
         <!-- Col 3: Doors -->
         <div class="wall-aperture-col">
           <div class="aperture-header">
-            <span>🚪 Doors on Wall ${selIdx + 1} (${(wall.doors || []).length})</span>
-            <button class="btn-xs primary" onclick="modeler.addDoorToWall(${selIdx})">+ Add Door</button>
+            <span>🚪 ${typeof I18N !== "undefined" ? I18N.t("cad.doors_col_title") : "Doors on Wall"} ${selIdx + 1} (${(wall.doors || []).length})</span>
+            <button class="btn-xs primary" onclick="modeler.addDoorToWall(${selIdx})">${typeof I18N !== "undefined" ? I18N.t("cad.add_door_btn") : "+ Add Door"}</button>
           </div>
           <div class="aperture-list">
-            ${doorsListHtml || '<div style="color:#94a3b8;font-style:italic;padding:8px;font-size:11px">No doors on this wall. Click "+ Add Door" above to insert.</div>'}
+            ${doorsListHtml || `<div style="color:#94a3b8;font-style:italic;padding:8px;font-size:11px">${typeof I18N !== "undefined" ? I18N.t("cad.no_doors") : "No doors on this wall."}</div>`}
           </div>
         </div>
       </div>
@@ -1232,13 +1658,38 @@ const modeler = {
     this.render();
   },
 
-  setWallOrientation(wIdx, newOri) {
+  setWallOrientation(wIdx, newOri, forcePropagate = null) {
     const sp = this.getSelectedSpace();
     if (!sp || !sp.walls || !sp.walls[wIdx]) return;
+    const shouldPropagate = forcePropagate !== null ? forcePropagate : this.autoPropagateOrientations;
+
     const w = sp.walls[wIdx];
     w.orientation = newOri;
     w.custom_orientation = true;
     w.is_interior = newOri === "Partition";
+
+    const targetAz = this.compassToAzimuth(newOri);
+
+    if (shouldPropagate && targetAz !== null && sp.walls.length >= 3) {
+      // Base geometric normal angle for this target wall
+      const baseAngle = this.getWallGeometricAngle(sp, wIdx);
+      // Angular rotation delta needed to place target wall at targetAz
+      const deltaTheta = ((targetAz - baseAngle) % 360 + 360) % 360;
+
+      // Automatically propagate to all other walls in the space
+      for (let j = 0; j < sp.walls.length; j++) {
+        if (j === wIdx) continue;
+        const otherWall = sp.walls[j];
+        if (otherWall.orientation === "Partition" || otherWall.orientation === "Underground") continue;
+        const otherBaseAngle = this.getWallGeometricAngle(sp, j);
+        const newSolarAz = ((otherBaseAngle + deltaTheta) % 360 + 360) % 360;
+        const otherOri = this.azimuthToCompass(newSolarAz);
+        otherWall.orientation = otherOri;
+        otherWall.custom_orientation = true;
+        otherWall.is_interior = false;
+      }
+    }
+
     this.syncSpaceFromGeometry(sp);
     this.render();
     app.refreshAllUI();
@@ -1378,5 +1829,576 @@ const modeler = {
     } else {
       infoEl.innerHTML = `Click room to select / drag to move. Click wall edges to set direction, windows, and doors.`;
     }
+  },
+
+  // --- Right-Click Context Menu & Dimension Input Subsystem ---
+
+  onContextMenu(e, cvs) {
+    e.preventDefault();
+    const rect = cvs.getBoundingClientRect();
+    const mx = e.clientX - rect.left;
+    const my = e.clientY - rect.top;
+    const splitX = this.viewMode === "split" ? cvs.width * 0.52 : (this.viewMode === "3d" ? 0 : cvs.width);
+
+    if (mx < splitX && this.viewMode !== "3d") {
+      const panX = this.pan2d.x;
+      const panY = this.pan2d.y;
+      const mPt = this.screenToModel(mx, my, panX, panY);
+
+      // Hit test room
+      const spaces = this.getSpacesOnLevel(this.activeLevel);
+      let hitSpace = null;
+      for (const sp of spaces) {
+        if (sp.geometry && this.isPointInsidePoly(mPt.x, mPt.y, sp.geometry.polygon)) {
+          hitSpace = sp;
+          break;
+        }
+      }
+
+      if (hitSpace) {
+        this.selectedSpaceId = hitSpace.id;
+        const pts = hitSpace.geometry.polygon;
+        let closestWall = 0, minD = 999999;
+        for (let i = 0; i < pts.length; i++) {
+          const d = this.distToSegment(mPt.x, mPt.y, pts[i][0], pts[i][1], pts[(i + 1) % pts.length][0], pts[(i + 1) % pts.length][1]);
+          if (d < minD) { minD = d; closestWall = i; }
+        }
+        this.selectedWallIdx = closestWall;
+        this.render();
+      }
+
+      this.showContextMenu(e.clientX, e.clientY, mPt, hitSpace);
+    } else {
+      this.show3DContextMenu(e.clientX, e.clientY);
+    }
+  },
+
+  showContextMenu(clientX, clientY, mPt, hitSpace) {
+    const menu = document.getElementById("cad-context-menu");
+    if (!menu) return;
+
+    let itemsHtml = "";
+
+    // 1. Create Room by Dimensions (Always available, targeted at click coordinate)
+    itemsHtml += `
+      <div class="ctx-item primary" onclick="modeler.hideContextMenu(); modeler.openCreateRoomByDimensionsModal({ x: ${mPt.x}, y: ${mPt.y} })">
+        <span>⌨️</span> <strong>${typeof I18N !== "undefined" ? I18N.t("cad.ctx_create_dim") : "Criar Ambiente por Dimensões (LxC)..."}</strong>
+      </div>
+      <div class="ctx-item" onclick="modeler.hideContextMenu(); modeler.currentTool='draw_rect'; modeler.render()">
+        <span>📐</span> ${typeof I18N !== "undefined" ? I18N.t("cad.ctx_draw_rect") : "Desenhar Ambiente com o Mouse (Arrastar)"}
+      </div>
+    `;
+
+    // 2. If a room is clicked or selected
+    if (hitSpace) {
+      const wallIdx = this.selectedWallIdx || 0;
+      const wall = hitSpace.walls && hitSpace.walls[wallIdx];
+      let oriStr = wall ? wall.orientation : "";
+      if (typeof I18N !== "undefined" && wall) {
+        oriStr = I18N.t("compass." + wall.orientation).split(" (")[0] || wall.orientation;
+      }
+      const wallLabel = wall ? ` (${oriStr})` : "";
+
+      itemsHtml += `
+        <div class="ctx-sep"></div>
+        <div class="ctx-header">🏢 ${hitSpace.name}</div>
+        <div class="ctx-item" onclick="modeler.hideContextMenu(); modeler.openResizeRoomModal('${hitSpace.id}')">
+          <span>📏</span> ${typeof I18N !== "undefined" ? I18N.t("cad.ctx_resize_dim") : "Redimensionar Ambiente por Dimensões (LxC)..."}
+        </div>
+        <div class="ctx-item" onclick="modeler.hideContextMenu(); modeler.duplicateSpace('${hitSpace.id}')">
+          <span>📋</span> ${typeof I18N !== "undefined" ? I18N.t("cad.ctx_duplicate") : "Duplicar este Ambiente (Ctrl+D)"}
+        </div>
+        <div class="ctx-item" onclick="modeler.hideContextMenu(); modeler.splitSelectedPerimeterCore(15)">
+          <span>✂️</span> ${typeof I18N !== "undefined" ? I18N.t("cad.ctx_split") : "Dividir em Zonas Perímetro/Núcleo"}
+        </div>
+        <div class="ctx-item" onclick="modeler.hideContextMenu(); modeler.addWindowToSelectedWall()">
+          <span>🪟</span> ${typeof I18N !== "undefined" ? I18N.t("cad.ctx_add_win") : "+ Adicionar Janela nesta Parede"}${wallLabel}
+        </div>
+        <div class="ctx-item" onclick="modeler.hideContextMenu(); modeler.addDoorToSelectedWall()">
+          <span>🚪</span> ${typeof I18N !== "undefined" ? I18N.t("cad.ctx_add_door") : "+ Adicionar Porta nesta Parede"}${wallLabel}
+        </div>
+        <div class="ctx-item" style="display:flex;justify-content:space-between;align-items:center;background:#fffbeb;border:1px solid #fde68a;border-radius:4px;padding:5px 8px;margin:3px 6px" onclick="event.stopPropagation()">
+          <span style="font-size:11px;font-weight:600;color:#92400e">🧭 Orientação:</span>
+          <div style="display:flex;gap:3px">
+            <button type="button" class="btn-xs ${wall && wall.orientation === 'N' ? 'primary' : ''}" onclick="modeler.hideContextMenu(); modeler.setWallOrientation(${wallIdx}, 'N')">N (0°)</button>
+            <button type="button" class="btn-xs ${wall && wall.orientation === 'E' ? 'primary' : ''}" onclick="modeler.hideContextMenu(); modeler.setWallOrientation(${wallIdx}, 'E')">L (90°)</button>
+            <button type="button" class="btn-xs ${wall && wall.orientation === 'S' ? 'primary' : ''}" onclick="modeler.hideContextMenu(); modeler.setWallOrientation(${wallIdx}, 'S')">S (180°)</button>
+            <button type="button" class="btn-xs ${wall && wall.orientation === 'W' ? 'primary' : ''}" onclick="modeler.hideContextMenu(); modeler.setWallOrientation(${wallIdx}, 'W')">O (270°)</button>
+          </div>
+        </div>
+        <div class="ctx-item danger" onclick="modeler.hideContextMenu(); modeler.deleteSelectedRoom()">
+          <span>🗑️</span> ${typeof I18N !== "undefined" ? I18N.t("cad.ctx_delete") : "Excluir este Ambiente (Del)"}
+        </div>
+      `;
+    }
+
+    // 3. General View Actions
+    itemsHtml += `
+      <div class="ctx-sep"></div>
+      <div class="ctx-item" onclick="modeler.hideContextMenu(); modeler.resetView()">
+        <span>🔍</span> ${typeof I18N !== "undefined" ? I18N.t("cad.ctx_fit") : "Ajustar Vista (Fit View)"}
+      </div>
+      <div class="ctx-item" onclick="modeler.hideContextMenu(); modeler.rot3d.az=(modeler.rot3d.az+45)%360; modeler.render()">
+        <span>🔄</span> ${typeof I18N !== "undefined" ? I18N.t("cad.ctx_rot3d") : "Girar Modelo 3D (45°)"}
+      </div>
+    `;
+
+    menu.innerHTML = itemsHtml;
+    menu.style.display = "block";
+
+    // Adjust position so context menu never clips out of the viewport
+    const menuW = menu.offsetWidth || 280;
+    const menuH = menu.offsetHeight || 320;
+    let posX = clientX;
+    let posY = clientY;
+    if (posX + menuW > window.innerWidth) posX = window.innerWidth - menuW - 12;
+    if (posY + menuH > window.innerHeight) posY = window.innerHeight - menuH - 12;
+    menu.style.left = `${Math.max(10, posX)}px`;
+    menu.style.top = `${Math.max(10, posY)}px`;
+  },
+
+  show3DContextMenu(clientX, clientY) {
+    const menu = document.getElementById("cad-context-menu");
+    if (!menu) return;
+    menu.innerHTML = `
+      <div class="ctx-header">🎮 3D Viewport</div>
+      <div class="ctx-item" onclick="modeler.hideContextMenu(); modeler.rot3d.az=(modeler.rot3d.az+45)%360; modeler.render()">
+        <span>🔄</span> ${typeof I18N !== "undefined" ? I18N.t("cad.ctx_rot3d") : "Girar Modelo 3D (45°)"}
+      </div>
+      <div class="ctx-item" onclick="modeler.hideContextMenu(); modeler.resetView()">
+        <span>🔍</span> ${typeof I18N !== "undefined" ? I18N.t("cad.ctx_fit") : "Ajustar Vista (Fit View)"}
+      </div>
+      <div class="ctx-sep"></div>
+      <div class="ctx-item" onclick="modeler.hideContextMenu(); modeler.viewMode='2d'; document.getElementById('cad-view-mode').value='2d'; modeler.render()">
+        <span>📐</span> ${typeof I18N !== "undefined" ? I18N.t("cad.view_2d") : "Planta Baixa Arquitetônica 2D"}
+      </div>
+      <div class="ctx-item" onclick="modeler.hideContextMenu(); modeler.viewMode='split'; document.getElementById('cad-view-mode').value='split'; modeler.render()">
+        <span>🏢</span> ${typeof I18N !== "undefined" ? I18N.t("cad.view_split") : "Dividido: 2D + Isométrica 3D"}
+      </div>
+    `;
+    menu.style.display = "block";
+    const menuW = menu.offsetWidth || 240;
+    const menuH = menu.offsetHeight || 180;
+    let posX = clientX;
+    let posY = clientY;
+    if (posX + menuW > window.innerWidth) posX = window.innerWidth - menuW - 12;
+    if (posY + menuH > window.innerHeight) posY = window.innerHeight - menuH - 12;
+    menu.style.left = `${Math.max(10, posX)}px`;
+    menu.style.top = `${Math.max(10, posY)}px`;
+  },
+
+  hideContextMenu() {
+    const menu = document.getElementById("cad-context-menu");
+    if (menu) menu.style.display = "none";
+  },
+
+  parseDimensionsInput(dimStr) {
+    if (!dimStr || typeof dimStr !== "string") return null;
+    let s = dimStr.trim();
+    // Normalize decimal commas if 'x', 'X' or '*' is present: e.g. 12,5 x 8,5 -> 12.5 x 8.5
+    if (/[xX*]/.test(s)) {
+      s = s.replace(/(\d+),(\d+)/g, "$1.$2");
+    }
+    const regex = /^([\d\.]+)\s*(m|ft|\'|\")?\s*(?:[xX*,\s]+)\s*([\d\.]+)\s*(m|ft|\'|\")?$/;
+    const match = s.match(regex);
+    if (!match) return null;
+
+    const val1 = parseFloat(match[1]);
+    const unit1 = match[2] ? match[2].toLowerCase() : null;
+    const val2 = parseFloat(match[3]);
+    const unit2 = match[4] ? match[4].toLowerCase() : null;
+
+    if (isNaN(val1) || isNaN(val2) || val1 <= 0 || val2 <= 0) return null;
+
+    const isSI = typeof I18N !== "undefined" && I18N.isSI();
+
+    const toInternalFt = (val, explicitUnit) => {
+      if (explicitUnit === "m") return val / 0.3048;
+      if (explicitUnit === "ft" || explicitUnit === "'" || explicitUnit === '"') return val;
+      return isSI ? (val / 0.3048) : val;
+    };
+
+    const toUserVal = (val, explicitUnit) => {
+      if (explicitUnit === "m") return isSI ? val : val / 0.3048;
+      if (explicitUnit === "ft" || explicitUnit === "'") return isSI ? val * 0.3048 : val;
+      return val;
+    };
+
+    const widthFt = toInternalFt(val1, unit1);
+    const lengthFt = toInternalFt(val2, unit2);
+
+    return {
+      widthFt: Math.round(widthFt * 10) / 10,
+      lengthFt: Math.round(lengthFt * 10) / 10,
+      widthUser: Math.round(toUserVal(val1, unit1) * 100) / 100,
+      lengthUser: Math.round(toUserVal(val2, unit2) * 100) / 100,
+      unit1,
+      unit2,
+    };
+  },
+
+  openCreateRoomByDimensionsModal(clickMpt = null) {
+    this.pendingPlacement = clickMpt;
+    const isSI = typeof I18N !== "undefined" && I18N.isSI();
+    const unitLen = isSI ? "m" : "ft";
+
+    // Smart default dimensions
+    const initW = isSI ? 10.0 : 30.0;
+    const initL = isSI ? 8.0 : 25.0;
+    const initH = isSI ? 3.0 : 9.0;
+    const quickVal = `${initW} x ${initL}`;
+
+    const spaces = this.getAllSpaces();
+    const initName = `Room ${spaces.length + 1}`;
+
+    const typeOptions = [
+      "Office - Open Plan",
+      "Office - Enclosed",
+      "Conference Room",
+      "Classroom",
+      "Corridor",
+      "Lobby",
+      "Restroom",
+      "Mechanical / Electrical Room",
+      "Storage",
+      "Cafeteria / Dining"
+    ];
+    const typeOptionsHtml = typeOptions.map(t => `<option value="${t}">${t}</option>`).join("");
+
+    const backdrop = document.getElementById("modal-backdrop");
+    backdrop.style.display = "flex";
+    document.getElementById("modal-title").textContent = typeof I18N !== "undefined" ? I18N.t("cad.dim_modal_title") : "Criar Ambiente por Dimensões (LxC)";
+
+    document.getElementById("modal-body").innerHTML = `
+      <div style="display:flex;flex-direction:column;gap:14px">
+        <div style="background:#f0f9ff;border:1px solid #bae6fd;padding:12px;border-radius:6px">
+          <label style="display:block;font-weight:700;font-size:13px;color:#0369a1;margin-bottom:6px">
+            ${typeof I18N !== "undefined" ? I18N.t("cad.dim_input_label") : "Dimensões Rápidas (Largura x Comprimento):"}
+          </label>
+          <div style="display:flex;gap:8px;align-items:center">
+            <input type="text" id="cad-dim-quick-input" value="${quickVal}" placeholder="Ex: 12x8, 15.5 x 10, 10m x 8m, 30' x 20'" 
+                   oninput="modeler.onQuickDimChange(this.value)"
+                   style="flex:1;padding:8px 12px;font-size:15px;font-weight:600;border:2px solid #0284c7;border-radius:4px;box-shadow:inset 0 1px 2px rgba(0,0,0,0.08)" />
+            <span style="font-size:12px;color:#64748b;font-style:italic">Largura x Comprimento</span>
+          </div>
+          <div style="font-size:11px;color:#0284c7;margin-top:4px">
+            💡 ${typeof I18N !== "undefined" ? I18N.t("cad.dim_modal_desc") : "Digite largura e comprimento (ex: 12x8, 15.5 x 10, 30' x 20' ou 10m x 8m)"}
+          </div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px">
+          <label style="display:flex;flex-direction:column;font-weight:600;font-size:12px;color:#334155;gap:4px">
+            <span>${typeof I18N !== "undefined" ? I18N.t("cad.dim_width_label") : "Largura"} (${unitLen}):</span>
+            <input type="number" id="cad-dim-w" step="0.1" min="0.5" value="${initW}" oninput="modeler.onExplicitDimChange()" style="padding:6px 8px;border:1px solid #cbd5e1;border-radius:3px;font-size:13px" />
+          </label>
+          <label style="display:flex;flex-direction:column;font-weight:600;font-size:12px;color:#334155;gap:4px">
+            <span>${typeof I18N !== "undefined" ? I18N.t("cad.dim_length_label") : "Comprimento"} (${unitLen}):</span>
+            <input type="number" id="cad-dim-l" step="0.1" min="0.5" value="${initL}" oninput="modeler.onExplicitDimChange()" style="padding:6px 8px;border:1px solid #cbd5e1;border-radius:3px;font-size:13px" />
+          </label>
+          <label style="display:flex;flex-direction:column;font-weight:600;font-size:12px;color:#334155;gap:4px">
+            <span>${typeof I18N !== "undefined" ? I18N.t("cad.dim_ceiling_label") : "Pé-direito"} (${unitLen}):</span>
+            <input type="number" id="cad-dim-h" step="0.1" min="1.0" value="${initH}" oninput="modeler.updateCalculatedArea()" style="padding:6px 8px;border:1px solid #cbd5e1;border-radius:3px;font-size:13px" />
+          </label>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+          <label style="display:flex;flex-direction:column;font-weight:600;font-size:12px;color:#334155;gap:4px">
+            <span>${typeof I18N !== "undefined" ? I18N.t("cad.dim_name_label") : "Nome do Ambiente:"}</span>
+            <input type="text" id="cad-dim-name" value="${initName}" style="padding:6px 8px;border:1px solid #cbd5e1;border-radius:3px;font-size:13px" />
+          </label>
+          <label style="display:flex;flex-direction:column;font-weight:600;font-size:12px;color:#334155;gap:4px">
+            <span>${typeof I18N !== "undefined" ? I18N.t("cad.dim_type_label") : "Uso do Espaço:"}</span>
+            <select id="cad-dim-type" style="padding:6px 8px;border:1px solid #cbd5e1;border-radius:3px;font-size:13px">
+              ${typeOptionsHtml}
+            </select>
+          </label>
+        </div>
+
+        <div class="dim-calc-preview" id="cad-dim-preview-box"></div>
+      </div>
+    `;
+
+    document.getElementById("modal-footer").innerHTML = `
+      <button class="btn-sm" onclick="app.closeModal()">Cancelar</button>
+      <button class="btn-sm primary" id="btn-submit-dim-create" onclick="modeler.submitCreateRoomByDimensions()">${typeof I18N !== "undefined" ? I18N.t("cad.dim_btn_create") : "Inserir Ambiente na Planta"}</button>
+    `;
+
+    this.updateCalculatedArea();
+
+    // Hook up Enter key
+    setTimeout(() => {
+      const input = document.getElementById("cad-dim-quick-input");
+      if (input) {
+        input.focus();
+        input.select();
+        input.addEventListener("keydown", (e) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            modeler.submitCreateRoomByDimensions();
+          }
+        });
+      }
+    }, 80);
+  },
+
+  onQuickDimChange(val) {
+    const parsed = this.parseDimensionsInput(val);
+    if (parsed) {
+      const elW = document.getElementById("cad-dim-w");
+      const elL = document.getElementById("cad-dim-l");
+      if (elW) elW.value = parsed.widthUser;
+      if (elL) elL.value = parsed.lengthUser;
+      this.updateCalculatedArea();
+    }
+  },
+
+  onExplicitDimChange() {
+    const w = parseFloat(document.getElementById("cad-dim-w")?.value) || 0;
+    const l = parseFloat(document.getElementById("cad-dim-l")?.value) || 0;
+    const elQuick = document.getElementById("cad-dim-quick-input");
+    if (elQuick) elQuick.value = `${w} x ${l}`;
+    this.updateCalculatedArea();
+  },
+
+  updateCalculatedArea() {
+    const isSI = typeof I18N !== "undefined" && I18N.isSI();
+    const wVal = parseFloat(document.getElementById("cad-dim-w")?.value) || 0;
+    const lVal = parseFloat(document.getElementById("cad-dim-l")?.value) || 0;
+    const hVal = parseFloat(document.getElementById("cad-dim-h")?.value) || 0;
+
+    const areaUser = wVal * lVal;
+    const volUser = areaUser * hVal;
+    const perimUser = 2 * (wVal + lVal);
+
+    const box = document.getElementById("cad-dim-preview-box");
+    if (!box) return;
+
+    const areaStr = isSI 
+      ? `${areaUser.toFixed(2)} m² <small style="color:#64748b">(${(areaUser / 0.092903).toFixed(0)} sqft)</small>`
+      : `${areaUser.toFixed(1)} sqft <small style="color:#64748b">(${(areaUser * 0.092903).toFixed(1)} m²)</small>`;
+    const volStr = isSI
+      ? `${volUser.toFixed(1)} m³ <small style="color:#64748b">(${(volUser / 0.0283168).toFixed(0)} cuft)</small>`
+      : `${volUser.toFixed(0)} cuft <small style="color:#64748b">(${(volUser * 0.0283168).toFixed(1)} m³)</small>`;
+    const perimStr = isSI
+      ? `${perimUser.toFixed(2)} m`
+      : `${perimUser.toFixed(1)} ft`;
+
+    const lblArea = typeof I18N !== "undefined" && I18N.getLanguage() === "pt-BR" ? "Área de Piso Estimada" : "Estimated Floor Area";
+    const lblVol = typeof I18N !== "undefined" && I18N.getLanguage() === "pt-BR" ? "Volume Interno" : "Interior Volume";
+    const lblPerim = typeof I18N !== "undefined" && I18N.getLanguage() === "pt-BR" ? "Perímetro (Paredes)" : "Wall Perimeter";
+
+    box.innerHTML = `
+      <div class="dcp-stat">
+        <span class="dcp-lbl">${lblArea}</span>
+        <span class="dcp-val">${areaStr}</span>
+      </div>
+      <div class="dcp-stat">
+        <span class="dcp-lbl">${lblVol}</span>
+        <span class="dcp-val">${volStr}</span>
+      </div>
+      <div class="dcp-stat">
+        <span class="dcp-lbl">${lblPerim}</span>
+        <span class="dcp-val">${perimStr}</span>
+      </div>
+    `;
+  },
+
+  submitCreateRoomByDimensions() {
+    const isSI = typeof I18N !== "undefined" && I18N.isSI();
+    const wUser = parseFloat(document.getElementById("cad-dim-w")?.value);
+    const lUser = parseFloat(document.getElementById("cad-dim-l")?.value);
+    const hUser = parseFloat(document.getElementById("cad-dim-h")?.value) || (isSI ? 3.0 : 9.0);
+    const name = document.getElementById("cad-dim-name")?.value.trim() || "New Room";
+    const spaceType = document.getElementById("cad-dim-type")?.value || "Office - Open Plan";
+
+    if (isNaN(wUser) || isNaN(lUser) || wUser <= 0 || lUser <= 0) {
+      alert("Por favor insira dimensões válidas maiores que zero.");
+      return;
+    }
+
+    const widthFt = isSI ? (wUser / 0.3048) : wUser;
+    const lengthFt = isSI ? (lUser / 0.3048) : lUser;
+    const heightFt = isSI ? (hUser / 0.3048) : hUser;
+
+    let posX = 30, posY = 30;
+    if (this.pendingPlacement) {
+      posX = this.pendingPlacement.x;
+      posY = this.pendingPlacement.y;
+      this.pendingPlacement = null;
+    } else {
+      const spaces = this.getSpacesOnLevel(this.activeLevel);
+      let maxX = 30, maxY = 30;
+      spaces.forEach(s => {
+        if (s.geometry && s.geometry.polygon) {
+          s.geometry.polygon.forEach(pt => {
+            if (pt[0] > maxX) maxX = pt[0];
+            if (pt[1] > maxY) maxY = pt[1];
+          });
+        }
+      });
+      posX = Math.round((maxX + 15) / this.gridSnap) * this.gridSnap;
+      posY = 30;
+    }
+
+    this.createNewRoomFromRect(posX, posY, Math.round(widthFt * 10) / 10, Math.round(lengthFt * 10) / 10);
+
+    const selSp = this.getSelectedSpace();
+    if (selSp) {
+      selSp.name = name;
+      selSp.zone_name = `${name} Zone`;
+      selSp.ceiling_height_ft = Math.round(heightFt * 10) / 10;
+      selSp.space_type = spaceType;
+      this.syncSpaceFromGeometry(selSp);
+    }
+
+    app.closeModal();
+    this.render();
+    app.refreshAllUI();
+    app.triggerAutoRecalculate();
+  },
+
+  openResizeRoomModal(spaceId) {
+    const sp = spaceId ? this.getAllSpaces().find(s => s.id === spaceId) : this.getSelectedSpace();
+    if (!sp || !sp.geometry || !sp.geometry.polygon || sp.geometry.polygon.length !== 4) {
+      alert("Por favor selecione um ambiente retangular para redimensionar.");
+      return;
+    }
+    const pts = sp.geometry.polygon;
+    const x0 = pts[0][0], y0 = pts[0][1];
+    const x1 = pts[2][0], y1 = pts[2][1];
+    const curWFt = Math.abs(x1 - x0);
+    const curLFt = Math.abs(y1 - y0);
+    const curHFt = parseFloat(sp.ceiling_height_ft || 9.0);
+
+    const isSI = typeof I18N !== "undefined" && I18N.isSI();
+    const curWUser = isSI ? Math.round(curWFt * 0.3048 * 100) / 100 : Math.round(curWFt * 10) / 10;
+    const curLUser = isSI ? Math.round(curLFt * 0.3048 * 100) / 100 : Math.round(curLFt * 10) / 10;
+    const curHUser = isSI ? Math.round(curHFt * 0.3048 * 100) / 100 : Math.round(curHFt * 10) / 10;
+    const unitLen = isSI ? "m" : "ft";
+
+    const backdrop = document.getElementById("modal-backdrop");
+    backdrop.style.display = "flex";
+    document.getElementById("modal-title").textContent = `${typeof I18N !== "undefined" ? I18N.t("cad.dim_modal_title_resize") : "Redimensionar Ambiente"} — ${sp.name}`;
+
+    document.getElementById("modal-body").innerHTML = `
+      <div style="display:flex;flex-direction:column;gap:14px">
+        <div style="background:#f0f9ff;border:1px solid #bae6fd;padding:12px;border-radius:6px">
+          <label style="display:block;font-weight:700;font-size:13px;color:#0369a1;margin-bottom:6px">
+            ${typeof I18N !== "undefined" ? I18N.t("cad.dim_input_label") : "Dimensões Rápidas (Largura x Comprimento):"}
+          </label>
+          <div style="display:flex;gap:8px;align-items:center">
+            <input type="text" id="cad-dim-quick-input" value="${curWUser} x ${curLUser}" placeholder="Ex: 12x8, 15.5 x 10, 10m x 8m, 30' x 20'" 
+                   oninput="modeler.onQuickDimChange(this.value)"
+                   style="flex:1;padding:8px 12px;font-size:15px;font-weight:600;border:2px solid #0284c7;border-radius:4px;box-shadow:inset 0 1px 2px rgba(0,0,0,0.08)" />
+            <span style="font-size:12px;color:#64748b;font-style:italic">Largura x Comprimento</span>
+          </div>
+          <div style="font-size:11px;color:#0284c7;margin-top:4px">
+            💡 ${typeof I18N !== "undefined" ? I18N.t("cad.dim_modal_desc") : "Digite largura e comprimento"}
+          </div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px">
+          <label style="display:flex;flex-direction:column;font-weight:600;font-size:12px;color:#334155;gap:4px">
+            <span>${typeof I18N !== "undefined" ? I18N.t("cad.dim_width_label") : "Largura"} (${unitLen}):</span>
+            <input type="number" id="cad-dim-w" step="0.1" min="0.5" value="${curWUser}" oninput="modeler.onExplicitDimChange()" style="padding:6px 8px;border:1px solid #cbd5e1;border-radius:3px;font-size:13px" />
+          </label>
+          <label style="display:flex;flex-direction:column;font-weight:600;font-size:12px;color:#334155;gap:4px">
+            <span>${typeof I18N !== "undefined" ? I18N.t("cad.dim_length_label") : "Comprimento"} (${unitLen}):</span>
+            <input type="number" id="cad-dim-l" step="0.1" min="0.5" value="${curLUser}" oninput="modeler.onExplicitDimChange()" style="padding:6px 8px;border:1px solid #cbd5e1;border-radius:3px;font-size:13px" />
+          </label>
+          <label style="display:flex;flex-direction:column;font-weight:600;font-size:12px;color:#334155;gap:4px">
+            <span>${typeof I18N !== "undefined" ? I18N.t("cad.dim_ceiling_label") : "Pé-direito"} (${unitLen}):</span>
+            <input type="number" id="cad-dim-h" step="0.1" min="1.0" value="${curHUser}" oninput="modeler.updateCalculatedArea()" style="padding:6px 8px;border:1px solid #cbd5e1;border-radius:3px;font-size:13px" />
+          </label>
+        </div>
+
+        <div class="dim-calc-preview" id="cad-dim-preview-box"></div>
+      </div>
+    `;
+
+    document.getElementById("modal-footer").innerHTML = `
+      <button class="btn-sm" onclick="app.closeModal()">Cancelar</button>
+      <button class="btn-sm primary" id="btn-submit-dim-resize" onclick="modeler.submitResizeRoom('${sp.id}')">${typeof I18N !== "undefined" ? I18N.t("cad.dim_btn_resize") : "Aplicar Novas Dimensões"}</button>
+    `;
+
+    this.updateCalculatedArea();
+
+    // Hook up Enter key
+    setTimeout(() => {
+      const input = document.getElementById("cad-dim-quick-input");
+      if (input) {
+        input.focus();
+        input.select();
+        input.addEventListener("keydown", (e) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            modeler.submitResizeRoom(sp.id);
+          }
+        });
+      }
+    }, 80);
+  },
+
+  submitResizeRoom(spaceId) {
+    const sp = this.getAllSpaces().find(s => s.id === spaceId);
+    if (!sp || !sp.geometry || !sp.geometry.polygon) return;
+    const isSI = typeof I18N !== "undefined" && I18N.isSI();
+    const wUser = parseFloat(document.getElementById("cad-dim-w")?.value);
+    const lUser = parseFloat(document.getElementById("cad-dim-l")?.value);
+    const hUser = parseFloat(document.getElementById("cad-dim-h")?.value) || (isSI ? 3.0 : 9.0);
+
+    if (isNaN(wUser) || isNaN(lUser) || wUser <= 0 || lUser <= 0) {
+      alert("Por favor insira dimensões válidas.");
+      return;
+    }
+
+    const wFt = isSI ? (wUser / 0.3048) : wUser;
+    const lFt = isSI ? (lUser / 0.3048) : lUser;
+    const hFt = isSI ? (hUser / 0.3048) : hUser;
+
+    const pts = sp.geometry.polygon;
+    const minX = Math.min(...pts.map(p => p[0]));
+    const minY = Math.min(...pts.map(p => p[1]));
+
+    sp.geometry.polygon = [
+      [minX, minY],
+      [Math.round((minX + wFt) * 10) / 10, minY],
+      [Math.round((minX + wFt) * 10) / 10, Math.round((minY + lFt) * 10) / 10],
+      [minX, Math.round((minY + lFt) * 10) / 10],
+    ];
+    sp.ceiling_height_ft = Math.round(hFt * 10) / 10;
+    this.syncSpaceFromGeometry(sp);
+
+    app.closeModal();
+    this.render();
+    app.refreshAllUI();
+    app.triggerAutoRecalculate();
+  },
+
+  duplicateSpace(spaceId) {
+    const targetId = spaceId || this.selectedSpaceId;
+    const spaces = app.state.project.space_models[0].spaces;
+    const sp = spaces.find(s => s.id === targetId);
+    if (!sp) return;
+
+    const cloned = JSON.parse(JSON.stringify(sp));
+    const newIdx = spaces.length + 1;
+    cloned.id = `S_ROOM_DUP_${Date.now()}`;
+    cloned.index = newIdx;
+    cloned.name = `${sp.name} (Cópia)`;
+    cloned.zone_id = `Z_DUP_${Date.now()}`;
+    cloned.zone_name = `${cloned.name} Zone`;
+
+    // Offset polygon by 20 ft
+    if (cloned.geometry && cloned.geometry.polygon) {
+      cloned.geometry.polygon = cloned.geometry.polygon.map(pt => [pt[0] + 20, pt[1] + 20]);
+    }
+    this.syncSpaceFromGeometry(cloned);
+    spaces.push(cloned);
+    this.selectedSpaceId = cloned.id;
+    this.selectedWallIdx = 0;
+    this.render();
+    app.refreshAllUI();
+    app.triggerAutoRecalculate();
   }
 };

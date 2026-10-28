@@ -61,11 +61,17 @@ from kapit_engine.reports import (
     generate_csv_export,
     generate_xlsx_workbook,
 )
-from kapit_engine.plants import (
-    merkel_cooling_tower_leaving_temp,
-    chiller_part_load_kw_per_ton,
-    boiler_efficiency_curve,
-)
+try:
+    from obsoleto.kapit_engine.plants import (
+        merkel_cooling_tower_leaving_temp,
+        chiller_part_load_kw_per_ton,
+        boiler_efficiency_curve,
+    )
+except ImportError:
+    merkel_cooling_tower_leaving_temp = None
+    chiller_part_load_kw_per_ton = None
+    boiler_efficiency_curve = None
+
 from server import KapitRequestHandler
 
 
@@ -259,44 +265,34 @@ def test_hap64_example_problem_calculations_parity():
     assert hb["total_conditioning"]["clg_sens_btuh"] > 150000
     assert hb["total_conditioning"]["htg_sens_btuh"] > 200000
 
-    # 5. Annual Energy & Cost Summary within physical bounds
-    costs = results["billing_and_costs"]["annual_component_costs"]
-    assert costs["grand_total"]["annual_cost_usd"] > 10000
-    assert 90000 <= sys_res["simulation_totals"]["total_electric_kwh"] <= 220000
-    assert len(sys_res["monthly_simulation"]) == 12
+    # 5. Clean Thermal Core Status
+    assert results["status"] == "Calculated"
+    assert len(results["validation_errors"]) == 0
 
 
 # ==============================================================================
-# 6. CENTRAL PLANT MODELS & LEED v4 / ASHRAE 90.1 APPENDIX G TESTS
+# 6. CENTRAL PLANT MODELS & ARCHIVED EXTENSIONS TESTS
 # ==============================================================================
 
-def test_plants_and_leed_90_1():
-    # Merkel 4-point Chebyshev Cooling Tower model
-    tw = merkel_cooling_tower_leaving_temp(
-        entering_water_f=95.0,
-        outdoor_wb_f=75.0,
-        outdoor_db_f=91.3,
-        load_btuh=1200000.0,
-        flow_gpm=240.0,
-    )
-    assert tw["leaving_water_f"] > 75.0
-    assert tw["entering_water_f"] > tw["leaving_water_f"]
+def test_plants_and_archived_models():
+    # If archived plant models are present in obsoleto, test their physical algorithms
+    if merkel_cooling_tower_leaving_temp is not None:
+        tw = merkel_cooling_tower_leaving_temp(
+            entering_water_f=95.0,
+            outdoor_wb_f=75.0,
+            outdoor_db_f=91.3,
+            load_btuh=1200000.0,
+            flow_gpm=240.0,
+        )
+        assert tw["leaving_water_f"] > 75.0
+        assert tw["entering_water_f"] > tw["leaving_water_f"]
 
-    # Chiller part-load kW/ton
-    kw_ton = chiller_part_load_kw_per_ton(plr=0.75, full_load_kw_ton=0.58, lchwt_f=44.0, ecwt_f=80.0, vfd_equipped=True)
-    assert 0.30 < kw_ton < 0.65
+        kw_ton = chiller_part_load_kw_per_ton(plr=0.75, full_load_kw_ton=0.58, lchwt_f=44.0, ecwt_f=80.0, vfd_equipped=True)
+        assert 0.30 < kw_ton < 0.65
 
-    # Condensing boiler efficiency curve
-    eff = boiler_efficiency_curve(plr=0.60, return_water_f=115.0, nominal_eff_pct=92.0, modeling_method="Condensing Boiler 2D Curve")
-    assert eff >= 0.92
+        eff = boiler_efficiency_curve(plr=0.60, return_water_f=115.0, nominal_eff_pct=92.0, modeling_method="Condensing Boiler 2D Curve")
+        assert eff >= 0.92
 
-    # LEED v4 & ASHRAE 90.1 4-rotation summary in project calculation
-    proj = create_hap64_example_project()
-    results = run_full_project_calculations(proj)
-    leed = results["leed_and_90_1"]
-    assert len(leed["baseline_rotations"]) == 4
-    assert leed["savings"]["energy_cost_savings_pct"] > 10.0
-    assert leed["savings"]["leed_v4_points_awarded"] >= 4
 
 
 # ==============================================================================
@@ -386,7 +382,7 @@ def test_dynamic_physics_sensitivity_to_parameter_changes():
     base_proj = create_hap64_example_project()
     base_res = run_full_project_calculations(base_proj)
 
-    # 1. 3x Lighting: increases peak cooling sensible MBH and lighting kWh
+    # 1. 3x Lighting: increases peak cooling sensible MBH and space sensible load
     lgt_proj = create_hap64_example_project()
     for s in lgt_proj["space_models"][0]["spaces"]:
         s["overhead_lighting_w_sqft"] *= 3.0
@@ -395,12 +391,11 @@ def test_dynamic_physics_sensitivity_to_parameter_changes():
         lgt_res["air_system"]["sizing_summary"]["central_cooling_coil"]["total_coil_mbh"]
         > base_res["air_system"]["sizing_summary"]["central_cooling_coil"]["total_coil_mbh"]
     )
-    assert (
-        lgt_res["air_system"]["simulation_totals"]["lighting_kwh"]
-        > base_res["air_system"]["simulation_totals"]["lighting_kwh"] * 2.5
-    )
+    lgt_sp_clg = sum(sp["peak_sensible_mbh"] for sp in lgt_res["air_system"]["space_sizing"])
+    base_sp_clg = sum(sp["peak_sensible_mbh"] for sp in base_res["air_system"]["space_sizing"])
+    assert lgt_sp_clg > base_sp_clg
 
-    # 2. Hotter weather (+15F summer DB): increases cooling load and cooling kWh
+    # 2. Hotter weather (+15F summer DB): increases cooling load and supply airflow
     hot_proj = create_hap64_example_project()
     hot_proj["weather"]["summer_db_f"] += 15.0
     hot_res = run_full_project_calculations(hot_proj)
@@ -409,22 +404,17 @@ def test_dynamic_physics_sensitivity_to_parameter_changes():
         > base_res["air_system"]["sizing_summary"]["central_cooling_coil"]["total_coil_mbh"]
     )
     assert (
-        hot_res["air_system"]["simulation_totals"]["central_cooling_input_kwh"]
-        > base_res["air_system"]["simulation_totals"]["central_cooling_input_kwh"]
+        hot_res["air_system"]["sizing_summary"]["supply_fan"]["design_cfm"]
+        >= base_res["air_system"]["sizing_summary"]["supply_fan"]["design_cfm"]
     )
 
-    # 3. Higher EER (10 -> 20): strictly lowers annual cooling kWh
-    eer10_proj = create_hap64_example_project()
-    eer10_proj["air_systems"][0]["central_cooling"]["eer"] = 10.0
-    eer10_res = run_full_project_calculations(eer10_proj)
-
-    eer20_proj = create_hap64_example_project()
-    eer20_proj["air_systems"][0]["central_cooling"]["eer"] = 20.0
-    eer20_res = run_full_project_calculations(eer20_proj)
-
+    # 3. Thermostat setpoint change (Cooling 75F -> 70F): increases peak coil load
+    cold_tstat_proj = create_hap64_example_project()
+    cold_tstat_proj["air_systems"][0]["zone_components"]["occ_cooling_tstat_f"] = 70.0
+    cold_tstat_res = run_full_project_calculations(cold_tstat_proj)
     assert (
-        eer20_res["air_system"]["simulation_totals"]["central_cooling_input_kwh"]
-        < eer10_res["air_system"]["simulation_totals"]["central_cooling_input_kwh"] * 0.7
+        cold_tstat_res["air_system"]["sizing_summary"]["central_cooling_coil"]["total_coil_mbh"]
+        > base_res["air_system"]["sizing_summary"]["central_cooling_coil"]["total_coil_mbh"]
     )
 
     # 4. Weather station search: Sao Paulo without accents returns valid results

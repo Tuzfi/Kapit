@@ -22,6 +22,8 @@ async def run_e2e_inspection():
             print("Abrindo navegador Chromium...")
             browser = await p.chromium.launch(headless=True)
             page = await browser.new_page(viewport={"width": 1440, "height": 900})
+            page.on("console", lambda msg: print(f"[CONSOLE {msg.type}]: {msg.text}"))
+            page.on("pageerror", lambda err: print(f"[PAGE ERROR]: {err}"))
 
             print("Navegando para http://127.0.0.1:8760...")
             await page.goto("http://127.0.0.1:8760", wait_until="networkidle")

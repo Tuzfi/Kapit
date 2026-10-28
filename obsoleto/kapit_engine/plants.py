@@ -6,8 +6,8 @@ Reproduces eDesign.Plants01.dll (CalcPlant, Chillers, BoilerCalc, CoolingTower_M
 from __future__ import annotations
 import math
 from typing import Any, Dict, List
-from .psychrometrics import enthalpy_btu_lb, humidity_ratio_from_db_rh, humidity_ratio_from_db_wb
-from .reference_data import fluid_properties
+from kapit_engine.psychrometrics import enthalpy_btu_lb, humidity_ratio_from_db_rh, humidity_ratio_from_db_wb
+from kapit_engine.reference_data import fluid_properties
 
 
 def merkel_cooling_tower_leaving_temp(

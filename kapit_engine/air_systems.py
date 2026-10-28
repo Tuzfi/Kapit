@@ -300,111 +300,8 @@ def calculate_air_system_design_and_energy(project: Dict[str, Any]) -> Dict[str,
         st_supply.to_dict(),
     ]
 
-    # Real 8,760-Hour Energy Simulation across Jan..Dec
-    eer = float(air_sys.get("central_cooling", {}).get("eer", 11.2))
-    wth_summary = load_data["weather_summary"]
-
-    tot_lpd_w = sum(s["floor_area_sqft"] * float(project["space_models"][0]["spaces"][i].get("overhead_lighting_w_sqft", 0.0)) for i, s in enumerate(space_results))
-    tot_epd_w = sum(s["floor_area_sqft"] * float(project["space_models"][0]["spaces"][i].get("elec_eqpt_w_sqft", 0.0)) for i, s in enumerate(space_results))
-
-    econ_ctrl = air_sys.get("economizer", {}).get("control", "Integrated Differential Enthalpy")
-    econ_cutoff = float(air_sys.get("economizer", {}).get("upper_cutoff_f", 65.0))
-    has_economizer = econ_ctrl not in ("None", "Disabled", "")
-
-    monthly_simulation: List[Dict[str, Any]] = []
-
-    for m_idx in range(1, 13):
-        m_name = MONTH_NAMES[m_idx - 1]
-        days = DAYS_IN_MONTH[m_idx - 1]
-        m_prof = wth_summary["monthly_profiles"][m_name]
-
-        m_preheat_kbtu = 0.0
-        m_clg_kbtu = 0.0
-        m_clg_kwh = 0.0
-        m_reheat_kbtu = 0.0
-        m_fan_kwh = 0.0
-        m_lgt_kwh = 0.0
-        m_eqp_kwh = 0.0
-        peak_kw_month = 0.0
-        peak_time_month = f"{m_idx}/15 12:00"
-
-        for hr in range(24):
-            t_oa = m_prof["db_hourly"][hr]
-            is_occ = 7 <= hr <= 21
-            f_lgt = 0.90 if is_occ else 0.05
-            f_occ = 0.95 if is_occ else 0.0
-
-            q_cooling_hr = max(0.0, (t_oa - 62.0) * (peak_sens_btuh / max(1.0, (oa_db_peak - 62.0)))) if t_oa > 60.0 else 0.0
-            q_heating_hr = max(0.0, (65.0 - t_oa) * (preheat_mbh * 1000.0 / max(1.0, (65.0 - winter_db)))) if t_oa < 62.0 else 0.0
-
-            if has_economizer and 52.0 <= t_oa <= econ_cutoff:
-                # Economizer satisfies fraction of cooling load with outdoor air
-                q_cooling_hr *= 0.18
-
-            # Part-load EER curve based on temperature
-            eer_adj = eer * (1.0 + 0.015 * (95.0 - t_oa))
-            clg_kw = (q_cooling_hr / max(1.0, eer_adj * 1000.0))
-            pre_kw = (q_heating_hr * 0.45) / 3412.14
-            reh_kw = (q_heating_hr * 0.55) / 3412.14
-
-            flow_frac = max(0.35, min(1.0, q_cooling_hr / max(1.0, peak_sens_btuh)))
-            fan_kw_hr = fan_kw * (0.0013 + 0.147 * flow_frac + 0.95 * (flow_frac ** 2) - 0.098 * (flow_frac ** 3))
-            lgt_kw_hr = (tot_lpd_w * f_lgt) / 1000.0
-            eqp_kw_hr = (tot_epd_w * f_lgt) / 1000.0
-
-            tot_kw_hr = clg_kw + pre_kw + reh_kw + fan_kw_hr + lgt_kw_hr + eqp_kw_hr
-            if tot_kw_hr > peak_kw_month:
-                peak_kw_month = tot_kw_hr
-                peak_time_month = f"{m_idx}/{min(28, 4 + hr % 20)} {hr:02d}:00"
-
-            m_preheat_kbtu += (q_heating_hr * 0.45 / 1000.0) * days
-            m_clg_kbtu += (q_cooling_hr / 1000.0) * days
-            m_clg_kwh += clg_kw * days
-            m_reheat_kbtu += (q_heating_hr * 0.55 / 1000.0) * days
-            m_fan_kwh += fan_kw_hr * days
-            m_lgt_kwh += lgt_kw_hr * days
-            m_eqp_kwh += eqp_kw_hr * days
-
-        pre_kwh = int(round(m_preheat_kbtu / 3.41214))
-        reh_kwh = int(round(m_reheat_kbtu / 3.41214))
-        clg_kwh = int(round(m_clg_kwh))
-        fan_kwh = int(round(m_fan_kwh))
-        lgt_kwh = int(round(m_lgt_kwh))
-        eqp_kwh = int(round(m_eqp_kwh))
-        tot_kwh = pre_kwh + reh_kwh + clg_kwh + fan_kwh + lgt_kwh + eqp_kwh
-
-        monthly_simulation.append({
-            "month": m_name,
-            "month_short": m_name[:3],
-            "preheat_coil_load_kbtu": int(round(m_preheat_kbtu)),
-            "preheat_coil_input_kwh": pre_kwh,
-            "central_cooling_load_kbtu": int(round(m_clg_kbtu)),
-            "central_cooling_input_kwh": clg_kwh,
-            "terminal_heating_load_kbtu": int(round(m_reheat_kbtu)),
-            "terminal_heating_input_kwh": reh_kwh,
-            "heating_total_kwh": pre_kwh + reh_kwh,
-            "supply_fan_kwh": fan_kwh,
-            "lighting_kwh": lgt_kwh,
-            "electric_eqpt_kwh": eqp_kwh,
-            "total_electric_kwh": tot_kwh,
-            "peak_demand_kw": round(peak_kw_month, 1),
-            "peak_demand_time": peak_time_month,
-        })
-
-    totals_sim = {
-        "preheat_coil_load_kbtu": sum(m["preheat_coil_load_kbtu"] for m in monthly_simulation),
-        "preheat_coil_input_kwh": sum(m["preheat_coil_input_kwh"] for m in monthly_simulation),
-        "central_cooling_load_kbtu": sum(m["central_cooling_load_kbtu"] for m in monthly_simulation),
-        "central_cooling_input_kwh": sum(m["central_cooling_input_kwh"] for m in monthly_simulation),
-        "terminal_heating_load_kbtu": sum(m["terminal_heating_load_kbtu"] for m in monthly_simulation),
-        "terminal_heating_input_kwh": sum(m["terminal_heating_input_kwh"] for m in monthly_simulation),
-        "heating_total_kwh": sum(m["heating_total_kwh"] for m in monthly_simulation),
-        "supply_fan_kwh": sum(m["supply_fan_kwh"] for m in monthly_simulation),
-        "lighting_kwh": sum(m["lighting_kwh"] for m in monthly_simulation),
-        "electric_eqpt_kwh": sum(m["electric_eqpt_kwh"] for m in monthly_simulation),
-        "total_electric_kwh": sum(m["total_electric_kwh"] for m in monthly_simulation),
-    }
-
+    # Clean Thermal Core (Peak Sizing & Psychrometrics)
+    # Note: 8,760-hour annual energy simulation moved to obsoleto/kapit_engine/air_systems_full_with_8760h.py
     air_sys_result = {
         "sizing_summary": sizing_summary,
         "zone_sizing": zone_results,
@@ -413,9 +310,10 @@ def calculate_air_system_design_and_energy(project: Dict[str, Any]) -> Dict[str,
         "system_heat_balance": system_heat_balance,
         "zone_heat_balance": load_data["zone_heat_balance"],
         "psychrometric_points": psychrometric_points,
-        "monthly_simulation": monthly_simulation,
-        "simulation_totals": totals_sim,
+        "monthly_simulation": [],
+        "simulation_totals": {},
         "weather_summary": load_data["weather_summary"],
     }
 
     return air_sys_result
+

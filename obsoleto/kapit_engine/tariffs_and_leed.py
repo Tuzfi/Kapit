@@ -5,8 +5,7 @@ Matches HAP-Example-Problem-Reports.pdf Pages 10-14 and Using-HAP6-for-LEED4.pdf
 """
 
 from __future__ import annotations
-from typing import Any, Dict, List
-from .reference_data import EPA_EGRID_SUBREGIONS
+from kapit_engine.reference_data import EPA_EGRID_SUBREGIONS
 
 
 def calculate_tariff_billing_and_costs(

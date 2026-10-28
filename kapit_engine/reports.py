@@ -10,17 +10,11 @@ import zipfile
 from xml.sax.saxutils import escape
 from typing import Any, Dict, List, Tuple
 from .air_systems import calculate_air_system_design_and_energy
-from .plants import simulate_plants
-from .tariffs_and_leed import (
-    calculate_leed_and_ashrae_90_1_summary,
-    calculate_tariff_billing_and_costs,
-)
 
 
 def validate_project(project: Dict[str, Any]) -> List[Dict[str, Any]]:
     """
-    Runs HAP 6.4 pre-calculation validation rules (Error codes 4-42 Alternative,
-    104-1053 Plant, 200-220 Air System, 300-342 Space Model, 700-718 Building).
+    Runs HAP 6.4 pre-calculation validation rules (Error codes 200-220 Air System, 300-342 Space Model, 700-718 Building).
     """
     errors: List[Dict[str, Any]] = []
     sm_list = project.get("space_models", [])
@@ -44,25 +38,23 @@ def validate_project(project: Dict[str, Any]) -> List[Dict[str, Any]]:
 
 def run_full_project_calculations(project: Dict[str, Any]) -> Dict[str, Any]:
     """
-    Executes the complete 3-Step HAP 6.4 Calculation Pipeline:
+    Executes the Clean Thermal Core Calculation Pipeline (ANSI/ASHRAE/ACCA Standard 183-2024 & 62.1-2022):
       Step 1: Space & Zone Heat Balance Design Day Loads (24h x 12m + Winter Heating)
-      Step 2: Air System & Ventilation Sizing + 21-Point Psychrometrics
-      Step 3: 8,760-Hour Energy Simulation, Plant Simulation, Utility Billing & LEED v4 / 90.1 Rating
+      Step 2: Air System & Ventilation Sizing + 21-Point Psychrometrics & Coil Sizing
+      Note: Non-thermal modules (8760h sim, plants, utility rates, LEED) moved to obsoleto/
     """
     validation_errors = validate_project(project)
     air_sys_res = calculate_air_system_design_and_energy(project)
-    plant_res = simulate_plants(project, air_sys_res)
-    billing_res = calculate_tariff_billing_and_costs(project, air_sys_res)
-    leed_res = calculate_leed_and_ashrae_90_1_summary(project, air_sys_res, billing_res)
 
     return {
         "status": "Calculated",
         "validation_errors": validation_errors,
         "air_system": air_sys_res,
-        "plants": plant_res,
-        "billing_and_costs": billing_res,
-        "leed_and_90_1": leed_res,
+        "plants": [],
+        "billing_and_costs": {},
+        "leed_and_90_1": {},
     }
+
 
 
 def generate_csv_export(calc_results: Dict[str, Any], report_type: str = "monthly_simulation") -> str:

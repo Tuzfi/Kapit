@@ -109,7 +109,8 @@ body {
   padding: 4px 0;
 }
 
-.menu-item:hover .menu-dropdown {
+.menu-item:hover .menu-dropdown,
+.menu-item.open .menu-dropdown {
   display: block;
 }
 
@@ -745,6 +746,222 @@ body {
 }
 .btn-xs.danger:hover {
   background: #fee2e2;
+}
+
+/* Solar Incidence & Auto-Propagation Components */
+.solar-prop-toggle {
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  border-radius: 4px;
+  padding: 6px 8px;
+  margin-top: 4px;
+  margin-bottom: 4px;
+}
+
+.solar-prop-toggle label {
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px !important;
+  font-weight: 600;
+  color: #166534;
+  cursor: pointer;
+}
+
+.solar-prop-toggle input[type="checkbox"] {
+  width: 15px;
+  height: 15px;
+  cursor: pointer;
+  accent-color: #16a34a;
+}
+
+.quick-ori-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.quick-ori-btn {
+  padding: 2px 7px;
+  font-size: 10.5px;
+  font-weight: 600;
+  border: 1px solid #cbd5e1;
+  border-radius: 3px;
+  background: #ffffff;
+  color: #334155;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.quick-ori-btn:hover {
+  background: #e0f2fe;
+  border-color: #0284c7;
+  color: #0369a1;
+}
+
+.quick-ori-btn.active {
+  background: #0284c7;
+  color: #ffffff;
+  border-color: #0369a1;
+  box-shadow: 0 1px 3px rgba(2, 132, 199, 0.3);
+}
+
+.solar-incidence-card {
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+  border-radius: 4px;
+  padding: 8px 10px;
+  margin-top: 6px;
+  font-size: 11px;
+  color: #92400e;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.solar-incidence-card .sic-title {
+  font-weight: 700;
+  font-size: 11.5px;
+  color: #b45309;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  border-bottom: 1px solid #fef3c7;
+  padding-bottom: 3px;
+}
+
+.solar-incidence-card .sic-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  margin-top: 2px;
+}
+
+.solar-incidence-card .sic-item {
+  background: rgba(255, 255, 255, 0.7);
+  padding: 3px 6px;
+  border-radius: 3px;
+  border: 1px solid #fef08a;
+}
+
+.solar-incidence-card .sic-item span.lbl {
+  color: #78350f;
+  font-size: 10px;
+  display: block;
+}
+
+.solar-incidence-card .sic-item span.val {
+  font-weight: 700;
+  font-size: 11.5px;
+  color: #b45309;
+}
+
+/* CAD Floor Plan Right-Click Context Menu */
+.cad-context-menu {
+  position: fixed;
+  z-index: 3000;
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.2), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
+  min-width: 260px;
+  max-width: 340px;
+  padding: 4px 0;
+  font-family: inherit;
+  font-size: 12px;
+  user-select: none;
+  animation: cadMenuFadeIn 0.12s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes cadMenuFadeIn {
+  from { opacity: 0; transform: scale(0.95); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+.cad-context-menu .ctx-header {
+  padding: 6px 14px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #64748b;
+  background: #f8fafc;
+  border-bottom: 1px solid #f1f5f9;
+  margin-bottom: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cad-context-menu .ctx-item {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 7px 14px;
+  color: #1e293b;
+  cursor: pointer;
+  transition: background 0.1s, color 0.1s;
+}
+
+.cad-context-menu .ctx-item:hover {
+  background: #e0f2fe;
+  color: #0369a1;
+}
+
+.cad-context-menu .ctx-item.primary {
+  font-weight: 600;
+  color: #0284c7;
+}
+
+.cad-context-menu .ctx-item.primary:hover {
+  background: #0284c7;
+  color: #ffffff;
+}
+
+.cad-context-menu .ctx-item.danger {
+  color: #dc2626;
+}
+
+.cad-context-menu .ctx-item.danger:hover {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.cad-context-menu .ctx-sep {
+  height: 1px;
+  background: #e2e8f0;
+  margin: 4px 0;
+}
+
+/* Dimension Modal Specific Styling */
+.dim-calc-preview {
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  border-radius: 6px;
+  padding: 10px 14px;
+  margin-top: 12px;
+  display: flex;
+  justify-content: space-around;
+  text-align: center;
+}
+
+.dim-calc-preview .dcp-stat {
+  display: flex;
+  flex-direction: column;
+}
+
+.dim-calc-preview .dcp-lbl {
+  font-size: 11px;
+  color: #166534;
+  font-weight: 600;
+}
+
+.dim-calc-preview .dcp-val {
+  font-size: 15px;
+  color: #14532d;
+  font-weight: 700;
 }
 
 /* Psychrometrics Layout */
