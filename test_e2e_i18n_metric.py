@@ -128,7 +128,7 @@ async def main():
             print("Botao de idioma alternou para PT-BR com sucesso.")
 
             print("Todos os testes E2E de PT-BR e Sistema Métrico passaram com sucesso!")
-            await browser.close()
+            await browser.close()asd
     finally:
         if server_proc:
             server_proc.terminate()
